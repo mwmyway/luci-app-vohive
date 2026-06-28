@@ -73,4 +73,4 @@ opkg install "$ipk" >/tmp/vohive-plugin-opkg.log 2>&1 || {
 
 rm -rf /tmp/luci-indexcache /tmp/luci-modulecache
 
-printf '{"ok":true,"message":"%s"}\n' "$(json_escape "LuCI 插件已更新到 $tag，请手动刷新浏览器页面。")"
+printf '{"ok":true,"message":"%s"}\n' "$(json_escape "LuCI 插件已更新到 $tag，页面即将刷新。")"

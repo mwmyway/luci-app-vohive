@@ -23,6 +23,17 @@ function notifyResult(text) {
 		ui.addNotification(null, E('p', {}, result.message || _('操作完成')), 'info');
 }
 
+function notifyResultAndReload(text) {
+	var result = parseJson(text);
+	if (result.ok === false) {
+		ui.addNotification(null, E('p', {}, result.message || _('操作失败')), 'danger');
+		return;
+	}
+
+	ui.addNotification(null, E('p', {}, result.message || _('操作完成')), 'info');
+	window.setTimeout(function() { location.reload(); }, 1500);
+}
+
 function runScript(path, args) {
 	return fs.exec_direct(path, args || []).then(function(text) {
 		notifyResult(text);
@@ -294,7 +305,7 @@ return view.extend({
 					'disabled': plugin.has_update ? null : true,
 					'click': ui.createHandlerFn(this, function() {
 						return fs.exec_direct('/usr/share/vohive/update_plugin.sh', [])
-							.then(notifyResult)
+							.then(notifyResultAndReload)
 							.catch(function(e) {
 								ui.addNotification(null, E('p', {}, e.message || String(e)), 'danger');
 							});
