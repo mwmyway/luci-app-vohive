@@ -41,7 +41,7 @@ jobs:
             https://github.com/upx/upx/releases/download/v3.95/upx-3.95-amd64_linux.tar.xz \
             -o /tmp/upx.tar.xz
           tar -xf /tmp/upx.tar.xz -C /tmp
-          printf 'UPX_BIN=%s\n' "/tmp/upx-3.95-amd64_linux/upx" >> "$GITHUB_ENV"
+          printf 'UPX=%s\n' "/tmp/upx-3.95-amd64_linux/upx" >> "$GITHUB_ENV"
 
       - name: Prepare package roots
         run: |
@@ -62,7 +62,7 @@ jobs:
             curl -fL --connect-timeout 20 --retry 3 "$url" -o "build/$pkg/data/etc/vohive/bin/vohive"
             chmod 0755 "build/$pkg/data/etc/vohive/bin/vohive"
             before_size="$(stat -c '%s' "build/$pkg/data/etc/vohive/bin/vohive")"
-            "$UPX_BIN" --lzma --best "build/$pkg/data/etc/vohive/bin/vohive" || true
+            "$UPX" --lzma --best "build/$pkg/data/etc/vohive/bin/vohive" || true
             chmod 0755 "build/$pkg/data/etc/vohive/bin/vohive"
             after_size="$(stat -c '%s' "build/$pkg/data/etc/vohive/bin/vohive")"
             printf 'VoHive core %s size: %s -> %s bytes\n' "$arch" "$before_size" "$after_size"
