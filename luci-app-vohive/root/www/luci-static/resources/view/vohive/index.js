@@ -56,6 +56,25 @@ function statusBadge(active) {
 	}, active ? _('运行中') : _('已停止'));
 }
 
+function releaseRepoSlug(repo) {
+	return (repo || 'https://github.com/iniwex5/vohive-release')
+		.replace(/^https?:\/\/github\.com\//, '')
+		.replace(/^git@github\.com:/, '')
+		.replace(/\/$/, '')
+		.replace(/\.git$/, '');
+}
+
+function releaseLink(repo, version) {
+	if (!repo || !/^v[0-9]/.test(version || ''))
+		return version;
+
+	return E('a', {
+		'href': 'https://github.com/%s/releases/tag/%s'.format(repo, version),
+		'target': '_blank',
+		'rel': 'noreferrer'
+	}, version);
+}
+
 return view.extend({
 	logRefreshTimer: null,
 	currentLogs: '',
@@ -79,11 +98,12 @@ return view.extend({
 		var latest = releases.latest || _('未知');
 		var backup = status.backup_version || _('无');
 		var canUpdate = status.core_installed && releases.latest && status.core_version && status.core_version != releases.latest;
+		var repo = releases.repo || '';
 		var rows = [
-			[ _('当前版本'), current ],
-			[ _('最新版本'), latest ],
-			[ _('可回滚版本'), backup ],
-			[ _('Release 仓库'), releases.repo || _('未知') ]
+			[ _('当前版本'), releaseLink(repo, current) ],
+			[ _('最新版本'), releaseLink(repo, latest) ],
+			[ _('可回滚版本'), releaseLink(repo, backup) ],
+			[ _('Release 仓库'), repo ? E('a', { 'href': 'https://github.com/%s/releases'.format(repo), 'target': '_blank', 'rel': 'noreferrer' }, repo) : _('未知') ]
 		];
 
 		var table = E('table', { 'class': 'table' }, rows.map(function(row) {
@@ -239,10 +259,12 @@ return view.extend({
 	renderStatus: function(status) {
 		var webUrl = 'http://%s:%s'.format(window.location.hostname, status.port || '7575');
 		var listenAddress = '%s:%s'.format(status.host || '0.0.0.0', status.port || '7575');
+		var releaseRepo = releaseRepoSlug(uci.get('vohive', 'main', 'release_repo'));
+		var coreVersion = status.core_installed ? (status.core_version || _('已安装')) : _('未安装');
 		var rows = [
 			[ _('服务状态'), statusBadge(status.running) ],
 			[ _('开机启用'), status.enabled ? _('已启用') : _('未启用') ],
-			[ _('核心状态'), status.core_installed ? (status.core_version || _('已安装')) : _('未安装') ],
+			[ _('核心状态'), status.core_installed ? releaseLink(releaseRepo, coreVersion) : coreVersion ],
 			[ _('监听地址'), status.running ? E('a', { 'href': webUrl, 'target': '_blank' }, listenAddress) : listenAddress ],
 			[ _('端口状态'), status.port_status || _('未知') ],
 			[ _('根分区空间'), progressbar(status.root_used_kb, status.root_total_kb, status.root_percent) ],
