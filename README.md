@@ -7,6 +7,8 @@ VoHive 的 OpenWrt / ImmortalWrt LuCI 管理插件。
 - `luci-app-vohive`: LuCI 页面、UCI 配置、procd 服务、核心下载与回滚脚本，不包含 VoHive 二进制。
 - `vohive-core-arm64` / `vohive-core-amd64` / `vohive-core-armv7`: 只预置对应架构的 VoHive 二进制和版本文件。
 
+Release 中的 `vohive-core-*` 包会在构建时尝试使用 UPX `--lzma --best` 压缩 core 二进制；如果 UPX 不支持该二进制，会自动保留原始 core。
+
 默认路径：
 
 ```text

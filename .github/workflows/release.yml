@@ -34,6 +34,15 @@ jobs:
       - name: Install packaging tools
         run: sudo apt-get update && sudo apt-get install -y file
 
+      - name: Setup UPX
+        run: |
+          set -eu
+          curl -fL --connect-timeout 20 --retry 3 \
+            https://github.com/upx/upx/releases/download/v3.95/upx-3.95-amd64_linux.tar.xz \
+            -o /tmp/upx.tar.xz
+          tar -xf /tmp/upx.tar.xz -C /tmp
+          printf 'UPX=%s\n' "/tmp/upx-3.95-amd64_linux/upx" >> "$GITHUB_ENV"
+
       - name: Prepare package roots
         run: |
           set -eu
@@ -52,6 +61,11 @@ jobs:
             mkdir -p "build/$pkg/control" "build/$pkg/data/etc/vohive/bin"
             curl -fL --connect-timeout 20 --retry 3 "$url" -o "build/$pkg/data/etc/vohive/bin/vohive"
             chmod 0755 "build/$pkg/data/etc/vohive/bin/vohive"
+            before_size="$(stat -c '%s' "build/$pkg/data/etc/vohive/bin/vohive")"
+            "$UPX" --lzma --best "build/$pkg/data/etc/vohive/bin/vohive" || true
+            chmod 0755 "build/$pkg/data/etc/vohive/bin/vohive"
+            after_size="$(stat -c '%s' "build/$pkg/data/etc/vohive/bin/vohive")"
+            printf 'VoHive core %s size: %s -> %s bytes\n' "$arch" "$before_size" "$after_size"
             printf '%s\n' "$VOHIVE_VERSION" > "build/$pkg/data/etc/vohive/bin/version"
             printf '%s\n' "$arch" > "build/$pkg/data/etc/vohive/bin/arch"
             file "build/$pkg/data/etc/vohive/bin/vohive"
@@ -159,6 +173,8 @@ jobs:
           - \`vohive-core-arm64_${VOHIVE_VERSION}-1_all.ipk\`: 仅包含 \`vohive_${VOHIVE_VERSION}_linux_arm64\` core。
           - \`vohive-core-amd64_${VOHIVE_VERSION}-1_all.ipk\`: 仅包含 \`vohive_${VOHIVE_VERSION}_linux_amd64\` core。
           - \`vohive-core-armv7_${VOHIVE_VERSION}-1_all.ipk\`: 仅包含 \`vohive_${VOHIVE_VERSION}_linux_armv7\` core。
+
+          \`vohive-core-*\` 包会在构建时尝试使用 UPX \`--lzma --best\` 压缩 core 二进制；如果 UPX 不支持该二进制，会自动保留原始 core。
 
           ### 架构选择
 
