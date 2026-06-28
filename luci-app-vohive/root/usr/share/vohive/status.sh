@@ -57,8 +57,33 @@ elif command -v netstat >/dev/null 2>&1; then
 	fi
 fi
 
-root_space="$(df -h / 2>/dev/null | awk 'NR==2 {print $4 " available on " $6}' || true)"
-data_space="$(df -h "$data_path" 2>/dev/null | awk 'NR==2 {print $4 " available on " $6}' || true)"
+df_json_fields() {
+	local prefix="$1"
+	local path="$2"
+	local line total used avail percent mount
+
+	line="$(df -kP "$path" 2>/dev/null | awk 'NR==2 {print $2 " " $3 " " $4 " " $5 " " $6}' || true)"
+	if [ -n "$line" ]; then
+		set -- $line
+		total="$1"
+		used="$2"
+		avail="$3"
+		percent="${4%%%}"
+		mount="$5"
+	else
+		total=0
+		used=0
+		avail=0
+		percent=0
+		mount=""
+	fi
+
+	printf '"%s_total_kb":%s,' "$prefix" "$total"
+	printf '"%s_used_kb":%s,' "$prefix" "$used"
+	printf '"%s_avail_kb":%s,' "$prefix" "$avail"
+	printf '"%s_percent":%s,' "$prefix" "$percent"
+	printf '"%s_mount":"%s",' "$prefix" "$(json_escape "$mount")"
+}
 
 printf '{'
 printf '"running":%s,' "$is_running"
@@ -71,6 +96,8 @@ printf '"port":"%s",' "$(json_escape "$port")"
 printf '"data_path":"%s",' "$(json_escape "$data_path")"
 printf '"default_password":%s,' "$default_password"
 printf '"port_status":"%s",' "$port_status"
-printf '"root_space":"%s",' "$(json_escape "$root_space")"
-printf '"data_space":"%s"' "$(json_escape "$data_space")"
+df_json_fields root /
+df_json_fields data "$data_path"
+printf '"root_space":"%s",' "$(json_escape "${root_avail_kb:-}")"
+printf '"data_space":"%s"' "$(json_escape "${data_avail_kb:-}")"
 printf '}\n'

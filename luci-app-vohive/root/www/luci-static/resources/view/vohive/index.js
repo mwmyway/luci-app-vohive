@@ -38,7 +38,28 @@ function saveApplyThen(map, fn) {
 		.then(fn);
 }
 
+function progressbar(usedKb, totalKb, percent) {
+	var used = (parseInt(usedKb) || 0) * 1024;
+	var total = (parseInt(totalKb) || 0) * 1024;
+	var pc = Math.max(0, Math.min(100, parseInt(percent) || 0));
+	var text = total ? '%1024.2mB / %1024.2mB (%d%%)'.format(used, total, pc) : _('未知');
+
+	return E('div', {
+		'class': 'cbi-progressbar',
+		'title': text
+	}, E('div', { 'style': 'width:%.2f%%'.format(pc) }));
+}
+
+function statusBadge(active) {
+	return E('span', {
+		'style': 'color:%s; font-weight:700;'.format(active ? '#37a24d' : '#d9534f')
+	}, active ? _('运行中') : _('已停止'));
+}
+
 return view.extend({
+	logRefreshTimer: null,
+	currentLogs: '',
+
 	handleSaveApply: function(ev, mode) {
 		return this.super('handleSaveApply', [ ev, mode ]).then(function() {
 			return fs.exec_direct('/usr/share/vohive/apply_config.sh', []).then(notifyResult);
@@ -204,14 +225,15 @@ return view.extend({
 	},
 
 	renderStatus: function(status) {
+		var webUrl = 'http://%s:%s'.format(window.location.hostname, status.port || '7575');
 		var rows = [
-			[ _('服务状态'), status.running ? _('运行中') : _('已停止') ],
+			[ _('服务状态'), statusBadge(status.running) ],
 			[ _('开机启用'), status.enabled ? _('已启用') : _('未启用') ],
 			[ _('核心状态'), status.core_installed ? (status.core_version || _('已安装')) : _('未安装') ],
-			[ _('监听地址'), '%s:%s'.format(status.host || '0.0.0.0', status.port || '7575') ],
+			[ _('监听地址'), E('a', { 'href': webUrl, 'target': '_blank' }, '%s:%s'.format(status.host || '0.0.0.0', status.port || '7575')) ],
 			[ _('端口状态'), status.port_status || _('未知') ],
-			[ _('根分区空间'), status.root_space || _('未知') ],
-			[ _('数据目录空间'), status.data_space || _('未知') ]
+			[ _('根分区空间'), progressbar(status.root_used_kb, status.root_total_kb, status.root_percent) ],
+			[ _('数据目录空间'), progressbar(status.data_used_kb, status.data_total_kb, status.data_percent) ]
 		];
 
 		var table = E('table', { 'class': 'table' }, rows.map(function(row) {
@@ -223,8 +245,6 @@ return view.extend({
 			warnings.push(E('div', { 'class': 'alert-message warning' }, _('检测到默认 Web 密码 admin/admin，请尽快修改。')));
 		if (!status.core_installed)
 			warnings.push(E('div', { 'class': 'alert-message warning' }, _('VoHive 核心尚未安装。')));
-
-		var webUrl = 'http://%s:%s'.format(window.location.hostname, status.port || '7575');
 
 		return E('div', { 'class': 'cbi-section' }, [
 			E('h3', {}, _('运行状态')),
@@ -255,6 +275,115 @@ return view.extend({
 		]);
 	},
 
+	refreshLogs: function(logNode) {
+		return fs.exec_direct('/usr/share/vohive/logs.sh', [ '100' ])
+			.catch(function() { return ''; })
+			.then(function(logs) {
+				this.currentLogs = logs || '';
+				dom.content(logNode, this.currentLogs || _('暂无日志'));
+			}.bind(this));
+	},
+
+	setLogAutoRefresh: function(enabled, logNode) {
+		if (this.logRefreshTimer) {
+			window.clearInterval(this.logRefreshTimer);
+			this.logRefreshTimer = null;
+		}
+
+		if (enabled) {
+			this.refreshLogs(logNode);
+			this.logRefreshTimer = window.setInterval(function() {
+				this.refreshLogs(logNode);
+			}.bind(this), 5000);
+		}
+	},
+
+	clearLogs: function(logNode) {
+		return fs.exec_direct('/usr/share/vohive/clear_logs.sh', [])
+			.then(function(text) {
+				notifyResult(text);
+				return this.refreshLogs(logNode);
+			}.bind(this))
+			.catch(function(e) {
+				ui.addNotification(null, E('p', {}, e.message || String(e)), 'danger');
+			});
+	},
+
+	downloadLogs: function() {
+		var blob = new Blob([ this.currentLogs || '' ], { type: 'text/plain;charset=utf-8' });
+		var url = URL.createObjectURL(blob);
+		var a = E('a', {
+			'href': url,
+			'download': 'vohive-logs.txt'
+		});
+
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+		window.setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+	},
+
+	renderLogs: function(logs) {
+		this.currentLogs = logs || '';
+		var logNode = E('pre', {
+			'style': [
+				'white-space: pre',
+				'height: 460px',
+				'overflow: auto',
+				'margin: 0',
+				'padding: 1em',
+				'border: 1px solid var(--border-color-medium)',
+				'border-radius: 6px',
+				'background: var(--background-color-low)',
+				'font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+				'font-size: 12px',
+				'line-height: 1.55'
+			].join(';')
+		}, this.currentLogs || _('暂无日志'));
+
+		return E('div', { 'class': 'cbi-section' }, [
+			E('h3', {}, _('运行日志')),
+			E('div', {
+				'style': [
+					'display: flex',
+					'align-items: center',
+					'justify-content: space-between',
+					'gap: 1em',
+					'flex-wrap: wrap',
+					'margin-bottom: 1em'
+				].join(';')
+			}, [
+				E('label', {
+					'style': 'display: inline-flex; align-items: center; gap: .5em; margin: 0;'
+				}, [
+					E('input', {
+						'type': 'checkbox',
+						'style': 'margin: 0;',
+						'change': function(ev) {
+							this.setLogAutoRefresh(ev.target.checked, logNode);
+						}.bind(this)
+					}),
+					E('span', {}, _('自动刷新'))
+				]),
+				E('div', { 'style': 'display: flex; gap: .5em; flex-wrap: wrap;' }, [
+					E('button', {
+						'class': 'btn cbi-button cbi-button-reload',
+						'click': ui.createHandlerFn(this, function() { return this.refreshLogs(logNode); })
+					}, _('刷新')),
+					E('button', {
+						'class': 'btn cbi-button cbi-button-reset',
+						'click': ui.createHandlerFn(this, function() { return this.clearLogs(logNode); })
+					}, _('清理日志')),
+					E('button', {
+						'class': 'btn cbi-button cbi-button-action',
+						'click': ui.createHandlerFn(this, function() { this.downloadLogs(); })
+					}, _('下载日志'))
+				])
+			]),
+			logNode
+		]);
+	},
+
 	render: function(data) {
 		var status = parseJson(data[1]);
 		var logs = data[2] || '';
@@ -277,12 +406,7 @@ return view.extend({
 				]),
 				corePane,
 				E('div', { 'data-tab': 'config', 'data-tab-title': _('基础配置') }, rendered[0]),
-				E('div', { 'data-tab': 'logs', 'data-tab-title': _('日志') }, [
-					E('div', { 'class': 'cbi-section' }, [
-						E('h3', {}, _('日志')),
-						E('pre', { 'style': 'white-space: pre-wrap; max-height: 360px; overflow: auto;' }, logs || _('暂无日志'))
-					])
-				])
+				E('div', { 'data-tab': 'logs', 'data-tab-title': _('日志') }, this.renderLogs(logs))
 			]);
 			var tabs = E('div', {}, panes);
 
