@@ -2,6 +2,7 @@
 
 BIN="/etc/vohive/bin/vohive"
 VERSION_FILE="/etc/vohive/bin/version"
+BACKUP_VERSION_FILE="/etc/vohive/bin/version.bak"
 
 json_escape() {
 	printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/	/\\t/g'
@@ -26,10 +27,16 @@ data_path="$(uci_get data_path '/etc/vohive/data')"
 
 core_installed=0
 core_version=""
+backup_version=""
 if [ -x "$BIN" ]; then
 	core_installed=1
 	core_version="$(cat "$VERSION_FILE" 2>/dev/null || true)"
 	[ -n "$core_version" ] || core_version="已安装，版本未知"
+fi
+if [ -s "$BACKUP_VERSION_FILE" ] && [ -s /etc/vohive/bin/vohive.bak ]; then
+	backup_version="$(cat "$BACKUP_VERSION_FILE" 2>/dev/null || true)"
+elif [ -s /etc/vohive/bin/vohive.bak ]; then
+	backup_version="版本未知"
 fi
 
 default_password=0
@@ -58,6 +65,7 @@ printf '"running":%s,' "$is_running"
 printf '"enabled":%s,' "$enabled"
 printf '"core_installed":%s,' "$core_installed"
 printf '"core_version":"%s",' "$(json_escape "$core_version")"
+printf '"backup_version":"%s",' "$(json_escape "$backup_version")"
 printf '"host":"%s",' "$(json_escape "$host")"
 printf '"port":"%s",' "$(json_escape "$port")"
 printf '"data_path":"%s",' "$(json_escape "$data_path")"

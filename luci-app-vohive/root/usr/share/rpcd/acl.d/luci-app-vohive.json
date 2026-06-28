@@ -5,7 +5,8 @@
 			"uci": [ "vohive" ],
 			"file": {
 				"/usr/share/vohive/status.sh": [ "exec" ],
-				"/usr/share/vohive/logs.sh": [ "exec" ]
+				"/usr/share/vohive/logs.sh": [ "exec" ],
+				"/usr/share/vohive/releases.sh": [ "exec" ]
 			}
 		},
 		"write": {

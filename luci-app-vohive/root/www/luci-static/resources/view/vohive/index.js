@@ -48,26 +48,63 @@ return view.extend({
 		return Promise.all([
 			uci.load('vohive'),
 			fs.exec_direct('/usr/share/vohive/status.sh', []).catch(function() { return '{}'; }),
-			fs.exec_direct('/usr/share/vohive/logs.sh', [ '100' ]).catch(function() { return ''; })
+			fs.exec_direct('/usr/share/vohive/logs.sh', [ '100' ]).catch(function() { return ''; }),
+			fs.exec_direct('/usr/share/vohive/releases.sh', [ '5' ]).catch(function() { return '{}'; })
 		]);
 	},
 
-	renderCoreMap: function() {
+	renderCoreSummary: function(status, releases) {
+		var current = status.core_installed ? (status.core_version || _('已安装，版本未知')) : _('未安装');
+		var latest = releases.latest || _('未知');
+		var backup = status.backup_version || _('无');
+		var canUpdate = status.core_installed && releases.latest && status.core_version && status.core_version != releases.latest;
+		var rows = [
+			[ _('当前版本'), current ],
+			[ _('最新版本'), latest ],
+			[ _('可回滚版本'), backup ],
+			[ _('Release 仓库'), releases.repo || _('未知') ]
+		];
+
+		var table = E('table', { 'class': 'table' }, rows.map(function(row) {
+			return E('tr', {}, [ E('td', {}, row[0]), E('td', {}, row[1]) ]);
+		}));
+
+		var nodes = [
+			E('div', { 'class': 'cbi-section' }, [
+				E('h3', {}, _('核心状态')),
+				table
+			])
+		];
+
+		if (canUpdate)
+			nodes.push(E('div', { 'class': 'alert-message warning' }, _('当前核心不是最新版本，可以选择最新版本后安装/更新。')));
+		else if (status.core_installed && releases.latest && status.core_version == releases.latest)
+			nodes.push(E('div', { 'class': 'alert-message success' }, _('当前核心已是最新版本。')));
+		else if (releases.ok === false)
+			nodes.push(E('div', { 'class': 'alert-message warning' }, releases.message || _('无法获取 Release 版本列表。')));
+
+		return E('div', {}, nodes);
+	},
+
+	renderCoreMap: function(status, releases) {
 		var m = new form.Map('vohive');
 		var s, o;
 
 		s = m.section(form.NamedSection, 'main', 'vohive', _('核心管理'));
 		s.addremove = false;
 
-		o = s.option(form.Value, 'release_repo', _('Release 仓库'));
-		o.default = 'iniwex5/vohive-release';
+		o = s.option(form.Value, 'release_repo', _('Release 仓库地址'));
+		o.default = 'https://github.com/iniwex5/vohive-release';
 		o.validate = function(section_id, value) {
-			return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value) || _('必须是 owner/repo 格式');
+			return /^(https?:\/\/github\.com\/)?[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/?$/.test(value) || _('必须是 GitHub 仓库地址');
 		};
 
-		o = s.option(form.Value, 'version', _('指定版本'));
-		o.placeholder = 'latest';
-		o.datatype = 'string';
+		o = s.option(form.ListValue, 'version', _('指定版本'));
+		o.value('latest', releases.latest ? _('最新版本') + ' (' + releases.latest + ')' : _('最新版本'));
+		(releases.versions || []).forEach(function(version) {
+			o.value(version, version);
+		});
+		o.default = 'latest';
 
 		o = s.option(form.Button, '_install_core', _('安装/更新核心'));
 		o.inputstyle = 'apply';
@@ -78,13 +115,18 @@ return view.extend({
 			});
 		});
 
-		o = s.option(form.Button, '_rollback_core', _('回滚核心'));
+		o = s.option(form.Button, '_rollback_core', status.backup_version ? _('回滚核心') + ' (' + status.backup_version + ')' : _('回滚核心'));
 		o.inputstyle = 'reset';
 		o.onclick = ui.createHandlerFn(this, function() {
 			return runScript('/usr/share/vohive/rollback_core.sh', []);
 		});
 
-		return m.render();
+		return m.render().then(function(mapEl) {
+			return E('div', {}, [
+				this.renderCoreSummary(status, releases),
+				mapEl
+			]);
+		}.bind(this));
 	},
 
 	renderConfigMap: function() {
@@ -192,9 +234,10 @@ return view.extend({
 	render: function(data) {
 		var status = parseJson(data[1]);
 		var logs = data[2] || '';
+		var releases = parseJson(data[3]);
 
 		return Promise.all([
-			this.renderCoreMap(),
+			this.renderCoreMap(status, releases),
 			this.renderConfigMap()
 		]).then(function(rendered) {
 			var panes = E('div', {}, [

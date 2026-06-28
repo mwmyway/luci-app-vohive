@@ -2,40 +2,26 @@
 
 set -eu
 
+. /usr/share/vohive/lib.sh
+
 BIN_DIR="/etc/vohive/bin"
 BIN="$BIN_DIR/vohive"
 BACKUP="$BIN_DIR/vohive.bak"
 VERSION_FILE="$BIN_DIR/version"
+BACKUP_VERSION_FILE="$BIN_DIR/version.bak"
 DOWNLOAD_DIR="/tmp/vohive/download"
-
-json_escape() {
-	printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
-}
 
 fail() {
 	printf '{"ok":false,"message":"%s"}\n' "$(json_escape "$*")"
 	exit 1
 }
 
-uci_get() {
-	local key="$1"
-	local default="$2"
-	local value
-
-	value="$(uci -q get "vohive.main.$key" 2>/dev/null || true)"
-	[ -n "$value" ] && printf '%s' "$value" || printf '%s' "$default"
-}
-
-repo="$(uci_get release_repo 'iniwex5/vohive-release')"
+repo="$(github_repo_slug "$(uci_get release_repo 'https://github.com/iniwex5/vohive-release')")"
 version="${1:-}"
 [ -n "$version" ] || version="$(uci_get version 'latest')"
 [ -n "$version" ] || version="latest"
 
-case "$repo" in
-	*/*) ;;
-	*) fail "Release repo must be owner/repo" ;;
-esac
-printf '%s' "$repo" | grep -Eq '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' || fail "Invalid release repo: $repo"
+validate_github_repo "$repo" || fail "Invalid GitHub repository: $repo"
 
 arch="$(uname -m)"
 case "$arch" in
@@ -72,6 +58,11 @@ fi
 
 if [ -x "$BIN" ]; then
 	cp -f "$BIN" "$BACKUP"
+	if [ -s "$VERSION_FILE" ]; then
+		cp -f "$VERSION_FILE" "$BACKUP_VERSION_FILE"
+	else
+		printf '已安装，版本未知\n' > "$BACKUP_VERSION_FILE"
+	fi
 fi
 
 cp -f "$downloaded" "$BIN"
