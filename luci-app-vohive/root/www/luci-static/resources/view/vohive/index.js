@@ -52,6 +52,91 @@ return view.extend({
 		]);
 	},
 
+	renderCoreMap: function() {
+		var m = new form.Map('vohive');
+		var s, o;
+
+		s = m.section(form.NamedSection, 'main', 'vohive', _('核心管理'));
+		s.addremove = false;
+
+		o = s.option(form.Value, 'release_repo', _('Release 仓库'));
+		o.default = 'iniwex5/vohive-release';
+		o.validate = function(section_id, value) {
+			return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value) || _('必须是 owner/repo 格式');
+		};
+
+		o = s.option(form.Value, 'version', _('指定版本'));
+		o.placeholder = 'latest';
+		o.datatype = 'string';
+
+		o = s.option(form.Button, '_install_core', _('安装/更新核心'));
+		o.inputstyle = 'apply';
+		o.onclick = ui.createHandlerFn(this, function() {
+			return saveApplyThen(m, function() {
+				var version = uci.get('vohive', 'main', 'version') || 'latest';
+				return runScript('/usr/share/vohive/install_core.sh', [ version ]);
+			});
+		});
+
+		o = s.option(form.Button, '_rollback_core', _('回滚核心'));
+		o.inputstyle = 'reset';
+		o.onclick = ui.createHandlerFn(this, function() {
+			return runScript('/usr/share/vohive/rollback_core.sh', []);
+		});
+
+		return m.render();
+	},
+
+	renderConfigMap: function() {
+		var m = new form.Map('vohive');
+		var s, o;
+
+		s = m.section(form.NamedSection, 'main', 'vohive', _('基础配置'));
+		s.addremove = false;
+
+		o = s.option(form.Flag, 'enabled', _('启用服务'));
+		o.default = '0';
+
+		o = s.option(form.Value, 'host', _('监听地址'));
+		o.default = '0.0.0.0';
+
+		o = s.option(form.Value, 'port', _('监听端口'));
+		o.default = '7575';
+		o.datatype = 'port';
+
+		o = s.option(form.Value, 'username', _('Web 用户名'));
+		o.default = 'admin';
+		o.rmempty = false;
+
+		o = s.option(form.Value, 'password', _('Web 密码'));
+		o.default = 'admin';
+		o.password = true;
+		o.rmempty = false;
+
+		o = s.option(form.ListValue, 'log_level', _('日志级别'));
+		o.value('debug', 'debug');
+		o.value('info', 'info');
+		o.value('warn', 'warn');
+		o.value('error', 'error');
+		o.default = 'info';
+
+		o = s.option(form.Value, 'data_path', _('数据目录'));
+		o.default = '/etc/vohive/data';
+		o.validate = function(section_id, value) {
+			return /^\/.+/.test(value) || _('必须是绝对路径');
+		};
+
+		o = s.option(form.Button, '_apply_config', _('保存并应用'));
+		o.inputstyle = 'apply';
+		o.onclick = ui.createHandlerFn(this, function() {
+			return saveApplyThen(m, function() {
+				return runScript('/usr/share/vohive/apply_config.sh', []);
+			});
+		});
+
+		return m.render();
+	},
+
 	renderStatus: function(status) {
 		var rows = [
 			[ _('服务状态'), status.running ? _('运行中') : _('已停止') ],
@@ -107,89 +192,33 @@ return view.extend({
 	render: function(data) {
 		var status = parseJson(data[1]);
 		var logs = data[2] || '';
-		var m = new form.Map('vohive', _('VoHive'), _('管理 VoHive 核心、服务和基础配置。'));
-		var s, o;
 
-		s = m.section(form.NamedSection, 'main', 'vohive', _('核心管理'));
-		s.addremove = false;
-
-		o = s.option(form.Value, 'release_repo', _('Release 仓库'));
-		o.default = 'iniwex5/vohive-release';
-		o.validate = function(section_id, value) {
-			return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value) || _('必须是 owner/repo 格式');
-		};
-
-		o = s.option(form.Value, 'version', _('指定版本'));
-		o.placeholder = 'latest';
-		o.datatype = 'string';
-
-		o = s.option(form.Button, '_install_core', _('安装/更新核心'));
-		o.inputstyle = 'apply';
-		o.onclick = ui.createHandlerFn(this, function() {
-			return saveApplyThen(m, function() {
-				var version = uci.get('vohive', 'main', 'version') || 'latest';
-				return runScript('/usr/share/vohive/install_core.sh', [ version ]);
-			});
-		});
-
-		o = s.option(form.Button, '_rollback_core', _('回滚核心'));
-		o.inputstyle = 'reset';
-		o.onclick = ui.createHandlerFn(this, function() {
-			return runScript('/usr/share/vohive/rollback_core.sh', []);
-		});
-
-		s = m.section(form.NamedSection, 'main', 'vohive', _('基础配置'));
-		s.addremove = false;
-
-		o = s.option(form.Flag, 'enabled', _('启用服务'));
-		o.default = '0';
-
-		o = s.option(form.Value, 'host', _('监听地址'));
-		o.default = '0.0.0.0';
-
-		o = s.option(form.Value, 'port', _('监听端口'));
-		o.default = '7575';
-		o.datatype = 'port';
-
-		o = s.option(form.Value, 'username', _('Web 用户名'));
-		o.default = 'admin';
-		o.rmempty = false;
-
-		o = s.option(form.Value, 'password', _('Web 密码'));
-		o.default = 'admin';
-		o.password = true;
-		o.rmempty = false;
-
-		o = s.option(form.ListValue, 'log_level', _('日志级别'));
-		o.value('debug', 'debug');
-		o.value('info', 'info');
-		o.value('warn', 'warn');
-		o.value('error', 'error');
-		o.default = 'info';
-
-		o = s.option(form.Value, 'data_path', _('数据目录'));
-		o.default = '/etc/vohive/data';
-		o.validate = function(section_id, value) {
-			return /^\/.+/.test(value) || _('必须是绝对路径');
-		};
-
-		o = s.option(form.Button, '_apply_config', _('保存并应用'));
-		o.inputstyle = 'apply';
-		o.onclick = ui.createHandlerFn(this, function() {
-			return saveApplyThen(m, function() {
-				return runScript('/usr/share/vohive/apply_config.sh', []);
-			});
-		});
-
-		return m.render().then(function(mapEl) {
-			return E('div', {}, [
-				this.renderStatus(status),
-				this.renderServiceButtons(),
-				mapEl,
-				E('div', { 'class': 'cbi-section' }, [
-					E('h3', {}, _('日志')),
-					E('pre', { 'style': 'white-space: pre-wrap; max-height: 360px; overflow: auto;' }, logs || _('暂无日志'))
+		return Promise.all([
+			this.renderCoreMap(),
+			this.renderConfigMap()
+		]).then(function(rendered) {
+			var panes = E('div', {}, [
+				E('div', { 'data-tab': 'home', 'data-tab-title': _('首页') }, [
+					this.renderStatus(status),
+					this.renderServiceButtons()
+				]),
+				E('div', { 'data-tab': 'core', 'data-tab-title': _('核心管理') }, rendered[0]),
+				E('div', { 'data-tab': 'config', 'data-tab-title': _('基础配置') }, rendered[1]),
+				E('div', { 'data-tab': 'logs', 'data-tab-title': _('日志') }, [
+					E('div', { 'class': 'cbi-section' }, [
+						E('h3', {}, _('日志')),
+						E('pre', { 'style': 'white-space: pre-wrap; max-height: 360px; overflow: auto;' }, logs || _('暂无日志'))
+					])
 				])
+			]);
+			var tabs = E('div', {}, panes);
+
+			ui.tabs.initTabGroup(panes.childNodes);
+
+			return E('div', {}, [
+				E('h2', {}, _('VoHive')),
+				E('div', { 'class': 'cbi-map-descr' }, _('管理 VoHive 核心、服务和基础配置。')),
+				tabs
 			]);
 		}.bind(this));
 	}
