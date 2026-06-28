@@ -17,7 +17,7 @@ validate_github_repo "$repo" || {
 	exit 0
 }
 
-json="$(curl -fsSL --show-error --connect-timeout 15 --retry 2 "https://api.github.com/repos/$repo/releases?per_page=$limit" 2>/tmp/vohive-releases.err)" || {
+json="$(curl -fsSL --show-error --connect-timeout 8 --max-time 25 "https://api.github.com/repos/$repo/releases?per_page=$limit" 2>/tmp/vohive-releases.err)" || {
 	msg="$(cat /tmp/vohive-releases.err 2>/dev/null || true)"
 	printf '{"ok":false,"message":"%s","latest":"","versions":[]}\n' "$(json_escape "Failed to query releases: $msg")"
 	exit 0

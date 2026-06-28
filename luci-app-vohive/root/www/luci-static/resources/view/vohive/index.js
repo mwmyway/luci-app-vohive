@@ -86,6 +86,10 @@ function coreArchLabel(arch) {
 	return arch && arch != 'unknown' ? 'linux_%s'.format(arch) : _('未知');
 }
 
+function loadingText(text) {
+	return E('em', { 'class': 'spinning' }, text || _('正在加载...'));
+}
+
 return view.extend({
 	logRefreshTimer: null,
 	currentLogs: '',
@@ -106,15 +110,22 @@ return view.extend({
 
 	renderCoreSummary: function(status, releases, refreshHandler) {
 		var current = status.core_installed ? (status.core_version || _('已安装，版本未知')) : _('未安装');
-		var latest = releases.latest || _('未知');
 		var backup = status.backup_version || _('无');
 		var canUpdate = status.core_installed && releases.latest && status.core_version && status.core_version != releases.latest;
+		var isLatest = status.core_installed && releases.latest && status.core_version == releases.latest;
 		var repo = releases.repo || '';
+		var latest = releases.loading ? loadingText(_('正在加载...')) : releaseLink(repo, releases.latest || _('未知'));
+		if (!releases.loading && releases.latest && (canUpdate || isLatest))
+			latest = E('span', {}, [
+				latest,
+				' ',
+				E('span', { 'style': 'color:%s;'.format(canUpdate ? '#d58512' : '#37a24d') }, canUpdate ? _('(可更新)') : _('(已是最新版本)'))
+			]);
 		var currentArch = status.core_installed ? coreArchLabel(status.core_arch || status.core_arch_effective) : _('未安装');
 		var rows = [
 			[ _('当前版本'), releaseLink(repo, current) ],
 			[ _('当前架构'), currentArch ],
-			[ _('最新版本'), releaseLink(repo, latest) ],
+			[ _('最新版本'), latest ],
 			[ _('可回滚版本'), releaseLink(repo, backup) ],
 			[ _('Release 仓库'), repo ? E('a', { 'href': 'https://github.com/%s/releases'.format(repo), 'target': '_blank', 'rel': 'noreferrer' }, repo) : _('未知') ]
 		];
@@ -125,11 +136,7 @@ return view.extend({
 
 		var notice = null;
 
-		if (canUpdate)
-			notice = E('div', { 'class': 'alert-message warning' }, _('当前核心不是最新版本，可以选择最新版本后安装/更新。'));
-		else if (status.core_installed && releases.latest && status.core_version == releases.latest)
-			notice = E('div', { 'class': 'alert-message success' }, _('当前核心已是最新版本。'));
-		else if (releases.ok === false)
+		if (releases.ok === false)
 			notice = E('div', { 'class': 'alert-message warning' }, releases.message || _('无法获取 Release 版本列表。'));
 
 		var nodes = [
@@ -177,7 +184,7 @@ return view.extend({
 		};
 
 		o = s.option(form.ListValue, 'version', _('指定版本'));
-		o.value('latest', releases.latest ? _('最新版本') + ' (' + releases.latest + ')' : _('最新版本'));
+		o.value('latest', releases.loading ? _('最新版本（正在加载...）') : (releases.latest ? _('最新版本') + ' (' + releases.latest + ')' : _('最新版本')));
 		(releases.versions || []).forEach(function(version) {
 			o.value(version, version);
 		});
@@ -210,16 +217,24 @@ return view.extend({
 		if (!force && (corePane.getAttribute('data-loaded') === 'true' || corePane.getAttribute('data-loading') === 'true'))
 			return;
 
+		var refreshHandler = ui.createHandlerFn(this, function() {
+			return this.loadCorePane(corePane, status, true);
+		});
+		var repo = releaseRepoSlug(uci.get('vohive', 'main', 'release_repo'));
+
 		corePane.setAttribute('data-loading', 'true');
-		dom.content(corePane, E('div', { 'class': 'cbi-section' }, E('em', { 'class': 'spinning' }, _('正在加载 Release 版本列表...'))));
+		this.renderCoreMap(status, { loading: true, repo: repo, versions: [] }, refreshHandler).then(function(coreEl) {
+			dom.content(corePane, coreEl);
+		});
 
 		return fs.exec_direct('/usr/share/vohive/releases.sh', [ '5' ])
-			.catch(function() { return '{}'; })
+			.catch(function(e) {
+				return JSON.stringify({ ok: false, repo: repo, message: e.message || String(e), latest: '', versions: [] });
+			})
 			.then(function(text) {
 				var releases = parseJson(text);
-				var refreshHandler = ui.createHandlerFn(this, function() {
-					return this.loadCorePane(corePane, status, true);
-				});
+				if (!releases.repo)
+					releases.repo = repo;
 
 				return this.renderCoreMap(status, releases, refreshHandler).then(function(coreEl) {
 					corePane.setAttribute('data-loaded', 'true');
@@ -232,10 +247,16 @@ return view.extend({
 	renderPluginSummary: function(plugin, refreshHandler) {
 		var repo = plugin.repo || 'Demogorgon314/luci-app-vohive';
 		var current = plugin.current || _('未知');
-		var latest = plugin.latest || _('未知');
+		var latest = plugin.loading ? loadingText(_('正在加载...')) : pluginVersionLink(repo, plugin.latest || _('未知'));
+		if (!plugin.loading && plugin.latest && plugin.ok !== false)
+			latest = E('span', {}, [
+				latest,
+				' ',
+				E('span', { 'style': 'color:%s;'.format(plugin.has_update ? '#d58512' : '#37a24d') }, plugin.has_update ? _('(可更新)') : _('(已是最新版本)'))
+			]);
 		var rows = [
 			[ _('当前版本'), pluginVersionLink(repo, current) ],
-			[ _('最新版本'), pluginVersionLink(repo, latest) ],
+			[ _('最新版本'), latest ],
 			[ _('Release 仓库'), E('a', { 'href': 'https://github.com/%s/releases'.format(repo), 'target': '_blank', 'rel': 'noreferrer' }, repo) ]
 		];
 
@@ -244,12 +265,10 @@ return view.extend({
 		}));
 
 		var notice = null;
-		if (plugin.ok === false)
+		if (plugin.loading)
+			notice = null;
+		else if (plugin.ok === false)
 			notice = E('div', { 'class': 'alert-message warning' }, plugin.message || _('无法获取插件版本信息。'));
-		else if (plugin.has_update)
-			notice = E('div', { 'class': 'alert-message warning' }, _('发现新的 LuCI 插件版本，可以更新。'));
-		else if (plugin.latest)
-			notice = E('div', { 'class': 'alert-message success' }, _('LuCI 插件已是最新版本。'));
 
 		var versions = (plugin.versions || []).map(function(version) {
 			return E('li', {}, pluginVersionLink(repo, version));
@@ -281,6 +300,7 @@ return view.extend({
 							});
 					})
 				}, _('更新 LuCI 插件')),
+				plugin.loading ? E('div', { 'style': 'margin-top:1em;' }, loadingText(_('正在加载最近版本...'))) : '',
 				versions.length ? E('div', { 'style': 'margin-top:1em;' }, [
 					E('strong', {}, _('最近版本')),
 					E('ul', {}, versions)
@@ -298,16 +318,24 @@ return view.extend({
 		if (!force && (pluginPane.getAttribute('data-loaded') === 'true' || pluginPane.getAttribute('data-loading') === 'true'))
 			return;
 
+		var refreshHandler = ui.createHandlerFn(this, function() {
+			return this.loadPluginPane(pluginPane, true);
+		});
+
 		pluginPane.setAttribute('data-loading', 'true');
-		dom.content(pluginPane, E('div', { 'class': 'cbi-section' }, E('em', { 'class': 'spinning' }, _('正在加载插件版本信息...'))));
+		dom.content(pluginPane, this.renderPluginSummary({
+			loading: true,
+			repo: 'Demogorgon314/luci-app-vohive',
+			current: _('未知'),
+			versions: []
+		}, refreshHandler));
 
 		return fs.exec_direct('/usr/share/vohive/plugin_status.sh', [ '5' ])
-			.catch(function() { return '{}'; })
+			.catch(function(e) {
+				return JSON.stringify({ ok: false, repo: 'Demogorgon314/luci-app-vohive', current: _('未知'), message: e.message || String(e), latest: '', has_update: false, versions: [] });
+			})
 			.then(function(text) {
 				var plugin = parseJson(text);
-				var refreshHandler = ui.createHandlerFn(this, function() {
-					return this.loadPluginPane(pluginPane, true);
-				});
 
 				pluginPane.setAttribute('data-loaded', 'true');
 				pluginPane.removeAttribute('data-loading');

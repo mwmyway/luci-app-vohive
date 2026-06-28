@@ -71,6 +71,6 @@ opkg install "$ipk" >/tmp/vohive-plugin-opkg.log 2>&1 || {
 	fail "安装 LuCI 插件失败: $msg"
 }
 
-/etc/init.d/rpcd restart >/dev/null 2>&1 || true
+rm -rf /tmp/luci-indexcache /tmp/luci-modulecache
 
 printf '{"ok":true,"message":"%s"}\n' "$(json_escape "LuCI 插件已更新到 $tag，请手动刷新浏览器页面。")"

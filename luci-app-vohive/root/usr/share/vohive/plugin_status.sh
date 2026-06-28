@@ -17,7 +17,7 @@ current="$(cat "$VERSION_FILE" 2>/dev/null || true)"
 [ -n "$current" ] || current="unknown"
 current_norm="${current#v}"
 
-json="$(curl -fsSL --show-error --connect-timeout 15 --retry 2 "https://api.github.com/repos/$PLUGIN_REPO/releases?per_page=$limit" 2>/tmp/vohive-plugin-releases.err)" || {
+json="$(curl -fsSL --show-error --connect-timeout 8 --max-time 25 "https://api.github.com/repos/$PLUGIN_REPO/releases?per_page=$limit" 2>/tmp/vohive-plugin-releases.err)" || {
 	msg="$(cat /tmp/vohive-plugin-releases.err 2>/dev/null || true)"
 	printf '{"ok":false,"message":"%s","repo":"%s","current":"%s","latest":"","has_update":false,"versions":[]}\n' \
 		"$(json_escape "Failed to query plugin releases: $msg")" \
