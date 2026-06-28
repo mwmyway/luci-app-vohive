@@ -7,10 +7,6 @@ on:
         description: VoHive release tag
         required: true
         default: v1.4.3
-      openwrt_arch:
-        description: OpenWrt package architecture
-        required: true
-        default: aarch64_cortex-a53
   push:
     tags:
       - 'v*'
@@ -22,7 +18,6 @@ jobs:
       contents: write
     env:
       VOHIVE_VERSION: ${{ github.event.inputs.vohive_version || 'v1.4.3' }}
-      OPENWRT_ARCH: ${{ github.event.inputs.openwrt_arch || 'aarch64_cortex-a53' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -43,20 +38,24 @@ jobs:
         run: |
           set -eu
           mkdir -p build/luci-app-vohive/control build/luci-app-vohive/data
-          mkdir -p build/vohive-core/control build/vohive-core/data
           cp -a luci-app-vohive/root/. build/luci-app-vohive/data/
           printf '%s\n' "$LUCI_APP_VERSION" > build/luci-app-vohive/data/usr/share/vohive/plugin_version
-          mkdir -p build/vohive-core/data/etc/vohive/bin
 
-      - name: Download VoHive core
+      - name: Download VoHive cores
         run: |
           set -eu
-          asset="vohive_${VOHIVE_VERSION}_linux_arm64"
-          url="https://github.com/iniwex5/vohive-release/releases/download/${VOHIVE_VERSION}/${asset}"
-          curl -fL --connect-timeout 20 --retry 3 "$url" -o build/vohive-core/data/etc/vohive/bin/vohive
-          chmod 0755 build/vohive-core/data/etc/vohive/bin/vohive
-          printf '%s\n' "$VOHIVE_VERSION" > build/vohive-core/data/etc/vohive/bin/version
-          file build/vohive-core/data/etc/vohive/bin/vohive
+          for arch in arm64 amd64 armv7; do
+            pkg="vohive-core-$arch"
+            asset="vohive_${VOHIVE_VERSION}_linux_${arch}"
+            url="https://github.com/iniwex5/vohive-release/releases/download/${VOHIVE_VERSION}/${asset}"
+
+            mkdir -p "build/$pkg/control" "build/$pkg/data/etc/vohive/bin"
+            curl -fL --connect-timeout 20 --retry 3 "$url" -o "build/$pkg/data/etc/vohive/bin/vohive"
+            chmod 0755 "build/$pkg/data/etc/vohive/bin/vohive"
+            printf '%s\n' "$VOHIVE_VERSION" > "build/$pkg/data/etc/vohive/bin/version"
+            printf '%s\n' "$arch" > "build/$pkg/data/etc/vohive/bin/arch"
+            file "build/$pkg/data/etc/vohive/bin/vohive"
+          done
 
       - name: Write package metadata
         run: |
@@ -86,27 +85,41 @@ jobs:
           EOF
           chmod 0755 build/luci-app-vohive/control/postinst
 
-          cat > build/vohive-core/control/control <<EOF
-          Package: vohive-core
-          Version: ${VOHIVE_VERSION}-1
-          Architecture: ${OPENWRT_ARCH}
-          Maintainer: VoHive
-          Section: utils
-          Priority: optional
-          Description: Preinstalled VoHive core binary for luci-app-vohive.
-          EOF
-          sed -i 's/^[[:space:]]*//' build/vohive-core/control/control
+          write_core_metadata() {
+            arch="$1"
+            pkg="vohive-core-$arch"
+            conflicts="vohive-core"
+            for other in arm64 amd64 armv7; do
+              [ "$other" = "$arch" ] || conflicts="$conflicts, vohive-core-$other"
+            done
 
-          cat > build/vohive-core/control/postinst <<'EOF'
-          #!/bin/sh
-          [ -n "${IPKG_INSTROOT}" ] || {
-          	if [ -x /etc/init.d/vohive ] && /etc/init.d/vohive running >/dev/null 2>&1; then
-          		/etc/init.d/vohive restart || true
-          	fi
+            cat > "build/$pkg/control/control" <<EOF
+            Package: $pkg
+            Version: ${VOHIVE_VERSION}-1
+            Architecture: all
+            Maintainer: VoHive
+            Section: utils
+            Priority: optional
+            Conflicts: $conflicts
+            Description: Preinstalled VoHive linux_$arch core binary for luci-app-vohive.
+            EOF
+            sed -i 's/^[[:space:]]*//' "build/$pkg/control/control"
+
+            cat > "build/$pkg/control/postinst" <<'EOF'
+            #!/bin/sh
+            [ -n "${IPKG_INSTROOT}" ] || {
+              if [ -x /etc/init.d/vohive ] && /etc/init.d/vohive running >/dev/null 2>&1; then
+                /etc/init.d/vohive restart || true
+              fi
+            }
+            exit 0
+            EOF
+            chmod 0755 "build/$pkg/control/postinst"
           }
-          exit 0
-          EOF
-          chmod 0755 build/vohive-core/control/postinst
+
+          for arch in arm64 amd64 armv7; do
+            write_core_metadata "$arch"
+          done
 
       - name: Build IPKs
         run: |
@@ -126,21 +139,66 @@ jobs:
           }
 
           build_ipk luci-app-vohive "${LUCI_APP_VERSION}-1" all
-          build_ipk vohive-core "${VOHIVE_VERSION}-1" "${OPENWRT_ARCH}"
+          for arch in arm64 amd64 armv7; do
+            build_ipk "vohive-core-$arch" "${VOHIVE_VERSION}-1" all
+          done
           for ipk in artifacts/*.ipk; do
             file "$ipk"
             tar -tzf "$ipk" | sed -n '1,3p'
           done
           (cd artifacts && sha256sum *.ipk > sha256sums.txt)
 
+      - name: Write release notes
+        run: |
+          set -eu
+          cat > build/release-notes.md <<EOF
+          ## VoHive LuCI ${LUCI_APP_VERSION}
+
+          ### 安装包说明
+
+          - \`luci-app-vohive_${LUCI_APP_VERSION}-1_all.ipk\`: LuCI 管理页面，不包含 VoHive core。安装后可在页面下载/安装核心。
+          - \`vohive-core-arm64_${VOHIVE_VERSION}-1_all.ipk\`: 仅包含 \`vohive_${VOHIVE_VERSION}_linux_arm64\` core。
+          - \`vohive-core-amd64_${VOHIVE_VERSION}-1_all.ipk\`: 仅包含 \`vohive_${VOHIVE_VERSION}_linux_amd64\` core。
+          - \`vohive-core-armv7_${VOHIVE_VERSION}-1_all.ipk\`: 仅包含 \`vohive_${VOHIVE_VERSION}_linux_armv7\` core。
+
+          ### 架构选择
+
+          - \`aarch64\` / \`arm64\` 路由器选择 \`arm64\`
+          - \`x86_64\` / \`amd64\` 设备选择 \`amd64\`
+          - \`armv7l\` / \`armv7\` 设备选择 \`armv7\`
+
+          ### 安装示例
+
+          只安装 LuCI 管理页面：
+
+          \`\`\`sh
+          opkg install luci-app-vohive_${LUCI_APP_VERSION}-1_all.ipk
+          \`\`\`
+
+          一步到位安装 LuCI + core，按设备架构选择一个 core 包：
+
+          \`\`\`sh
+          opkg install luci-app-vohive_${LUCI_APP_VERSION}-1_all.ipk vohive-core-arm64_${VOHIVE_VERSION}-1_all.ipk
+          opkg install luci-app-vohive_${LUCI_APP_VERSION}-1_all.ipk vohive-core-amd64_${VOHIVE_VERSION}-1_all.ipk
+          opkg install luci-app-vohive_${LUCI_APP_VERSION}-1_all.ipk vohive-core-armv7_${VOHIVE_VERSION}-1_all.ipk
+          \`\`\`
+
+          已安装 LuCI 后，只安装/替换 core：
+
+          \`\`\`sh
+          opkg install vohive-core-arm64_${VOHIVE_VERSION}-1_all.ipk
+          \`\`\`
+          EOF
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: vohive-ipk-${{ env.VOHIVE_VERSION }}-${{ env.OPENWRT_ARCH }}
+          name: vohive-ipk-${{ env.VOHIVE_VERSION }}
           path: artifacts/*
 
       - name: Publish release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
+          body_path: build/release-notes.md
           files: artifacts/*
