@@ -21,11 +21,20 @@ jobs:
     permissions:
       contents: write
     env:
-      LUCI_APP_VERSION: 0.1.1
       VOHIVE_VERSION: ${{ github.event.inputs.vohive_version || 'v1.4.3' }}
       OPENWRT_ARCH: ${{ github.event.inputs.openwrt_arch || 'aarch64_cortex-a53' }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Resolve versions
+        run: |
+          set -eu
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="0.0.0-dev"
+          fi
+          printf 'LUCI_APP_VERSION=%s\n' "$version" >> "$GITHUB_ENV"
 
       - name: Install packaging tools
         run: sudo apt-get update && sudo apt-get install -y binutils file

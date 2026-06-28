@@ -38,13 +38,13 @@ https://github.com/iniwex5/vohive-release
 从 GitHub Release 下载并安装：
 
 ```sh
-opkg install luci-app-vohive_0.1.1-1_all.ipk
+opkg install luci-app-vohive_<version>-1_all.ipk
 ```
 
 如果需要内置核心：
 
 ```sh
-opkg install luci-app-vohive_0.1.1-1_all.ipk vohive-core_v1.4.3-1_aarch64_cortex-a53.ipk
+opkg install luci-app-vohive_<version>-1_all.ipk vohive-core_v1.4.3-1_aarch64_cortex-a53.ipk
 ```
 
 也可以只安装 `luci-app-vohive`，进入 LuCI 页面后点击“安装/更新核心”。
@@ -54,14 +54,14 @@ opkg install luci-app-vohive_0.1.1-1_all.ipk vohive-core_v1.4.3-1_aarch64_cortex
 推送 `v*` tag 会触发 GitHub Action 生成 IPK 包：
 
 ```sh
-git tag v0.1.1
-git push origin v0.1.1
+git tag v0.1.2
+git push origin v0.1.2
 ```
 
 Release 产物：
 
 ```text
-luci-app-vohive_0.1.1-1_all.ipk
+luci-app-vohive_<version>-1_all.ipk
 vohive-core_v1.4.3-1_aarch64_cortex-a53.ipk
 sha256sums.txt
 ```
@@ -71,7 +71,7 @@ sha256sums.txt
 把本仓库作为 OpenWrt SDK 的 package feed 使用，或复制到 SDK 的 `package/` 目录后执行：
 
 ```sh
-make package/vohive/luci-app-vohive/compile V=s
+make package/vohive/luci-app-vohive/compile V=s PKG_VERSION=0.1.2
 make package/vohive/vohive-core/compile V=s VOHIVE_VERSION=v1.4.3
 ```
 
