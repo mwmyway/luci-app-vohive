@@ -38,13 +38,13 @@ https://github.com/iniwex5/vohive-release
 从 GitHub Release 下载并安装：
 
 ```sh
-opkg install luci-app-vohive_0.1.0_all.ipk
+opkg install luci-app-vohive_0.1.1-1_all.ipk
 ```
 
 如果需要内置核心：
 
 ```sh
-opkg install luci-app-vohive_0.1.0_all.ipk vohive-core_v1.4.3_aarch64_cortex-a53.ipk
+opkg install luci-app-vohive_0.1.1-1_all.ipk vohive-core_v1.4.3-1_aarch64_cortex-a53.ipk
 ```
 
 也可以只安装 `luci-app-vohive`，进入 LuCI 页面后点击“安装/更新核心”。
@@ -54,14 +54,14 @@ opkg install luci-app-vohive_0.1.0_all.ipk vohive-core_v1.4.3_aarch64_cortex-a53
 推送 `v*` tag 会触发 GitHub Action 生成 IPK 包：
 
 ```sh
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
 Release 产物：
 
 ```text
-luci-app-vohive_0.1.0-1_all.ipk
+luci-app-vohive_0.1.1-1_all.ipk
 vohive-core_v1.4.3-1_aarch64_cortex-a53.ipk
 sha256sums.txt
 ```
@@ -76,12 +76,6 @@ make package/vohive/vohive-core/compile V=s VOHIVE_VERSION=v1.4.3
 ```
 
 ## TODO
-
-### 下一版本
-
-- LuCI 插件自更新。
-
-### 后续版本
 
 - 浏览器上传本地 VoHive 二进制并安装。
 - GitHub 镜像/代理下载配置。

@@ -75,6 +75,13 @@ function releaseLink(repo, version) {
 	}, version);
 }
 
+function pluginVersionLink(repo, version) {
+	if (/^[0-9]/.test(version || ''))
+		return releaseLink(repo, 'v' + version);
+
+	return releaseLink(repo, version);
+}
+
 return view.extend({
 	logRefreshTimer: null,
 	currentLogs: '',
@@ -203,6 +210,92 @@ return view.extend({
 					corePane.removeAttribute('data-loading');
 					dom.content(corePane, coreEl);
 				});
+			}.bind(this));
+	},
+
+	renderPluginSummary: function(plugin, refreshHandler) {
+		var repo = plugin.repo || 'Demogorgon314/luci-app-vohive';
+		var current = plugin.current || _('未知');
+		var latest = plugin.latest || _('未知');
+		var rows = [
+			[ _('当前版本'), pluginVersionLink(repo, current) ],
+			[ _('最新版本'), pluginVersionLink(repo, latest) ],
+			[ _('Release 仓库'), E('a', { 'href': 'https://github.com/%s/releases'.format(repo), 'target': '_blank', 'rel': 'noreferrer' }, repo) ]
+		];
+
+		var table = E('table', { 'class': 'table' }, rows.map(function(row) {
+			return E('tr', {}, [ E('td', {}, row[0]), E('td', {}, row[1]) ]);
+		}));
+
+		var notice = null;
+		if (plugin.ok === false)
+			notice = E('div', { 'class': 'alert-message warning' }, plugin.message || _('无法获取插件版本信息。'));
+		else if (plugin.has_update)
+			notice = E('div', { 'class': 'alert-message warning' }, _('发现新的 LuCI 插件版本，可以更新。'));
+		else if (plugin.latest)
+			notice = E('div', { 'class': 'alert-message success' }, _('LuCI 插件已是最新版本。'));
+
+		var versions = (plugin.versions || []).map(function(version) {
+			return E('li', {}, pluginVersionLink(repo, version));
+		});
+
+		var nodes = [
+			E('div', { 'class': 'cbi-section' }, [
+				E('div', {
+					'style': 'display:flex; align-items:center; justify-content:space-between; gap:1em; flex-wrap:wrap;'
+				}, [
+					E('h3', { 'style': 'margin-bottom:.75em;' }, _('插件状态')),
+					E('button', {
+						'class': 'btn cbi-button cbi-button-reload',
+						'click': refreshHandler
+					}, _('检测更新'))
+				]),
+				table
+			]),
+			E('div', { 'class': 'cbi-section' }, [
+				E('h3', {}, _('插件更新')),
+				E('button', {
+					'class': 'btn cbi-button cbi-button-action',
+					'disabled': plugin.has_update ? null : true,
+					'click': ui.createHandlerFn(this, function() {
+						return fs.exec_direct('/usr/share/vohive/update_plugin.sh', [])
+							.then(notifyResult)
+							.catch(function(e) {
+								ui.addNotification(null, E('p', {}, e.message || String(e)), 'danger');
+							});
+					})
+				}, _('更新 LuCI 插件')),
+				versions.length ? E('div', { 'style': 'margin-top:1em;' }, [
+					E('strong', {}, _('最近版本')),
+					E('ul', {}, versions)
+				]) : ''
+			])
+		];
+
+		if (notice)
+			nodes.unshift(notice);
+
+		return E('div', {}, nodes);
+	},
+
+	loadPluginPane: function(pluginPane, force) {
+		if (!force && (pluginPane.getAttribute('data-loaded') === 'true' || pluginPane.getAttribute('data-loading') === 'true'))
+			return;
+
+		pluginPane.setAttribute('data-loading', 'true');
+		dom.content(pluginPane, E('div', { 'class': 'cbi-section' }, E('em', { 'class': 'spinning' }, _('正在加载插件版本信息...'))));
+
+		return fs.exec_direct('/usr/share/vohive/plugin_status.sh', [ '5' ])
+			.catch(function() { return '{}'; })
+			.then(function(text) {
+				var plugin = parseJson(text);
+				var refreshHandler = ui.createHandlerFn(this, function() {
+					return this.loadPluginPane(pluginPane, true);
+				});
+
+				pluginPane.setAttribute('data-loaded', 'true');
+				pluginPane.removeAttribute('data-loading');
+				dom.content(pluginPane, this.renderPluginSummary(plugin, refreshHandler));
 			}.bind(this));
 	},
 
@@ -436,6 +529,14 @@ return view.extend({
 				this.loadCorePane(corePane, status);
 			}.bind(this));
 
+			var pluginPane = E('div', { 'data-tab': 'plugin', 'data-tab-title': _('插件管理') }, [
+				E('div', { 'class': 'cbi-section' }, E('em', {}, _('点击插件管理后加载插件版本信息。')))
+			]);
+
+			pluginPane.addEventListener('cbi-tab-active', function() {
+				this.loadPluginPane(pluginPane);
+			}.bind(this));
+
 			var panes = E('div', {}, [
 				E('div', { 'data-tab': 'home', 'data-tab-title': _('首页') }, [
 					this.renderStatus(status),
@@ -443,7 +544,8 @@ return view.extend({
 				]),
 				corePane,
 				E('div', { 'data-tab': 'config', 'data-tab-title': _('基础配置') }, rendered[0]),
-				E('div', { 'data-tab': 'logs', 'data-tab-title': _('日志') }, this.renderLogs(logs))
+				E('div', { 'data-tab': 'logs', 'data-tab-title': _('日志') }, this.renderLogs(logs)),
+				pluginPane
 			]);
 			var tabs = E('div', {}, panes);
 

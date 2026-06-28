@@ -6,7 +6,8 @@
 			"file": {
 				"/usr/share/vohive/status.sh": [ "exec" ],
 				"/usr/share/vohive/logs.sh": [ "exec" ],
-				"/usr/share/vohive/releases.sh": [ "exec" ]
+				"/usr/share/vohive/releases.sh": [ "exec" ],
+				"/usr/share/vohive/plugin_status.sh": [ "exec" ]
 			}
 		},
 		"write": {
@@ -16,7 +17,8 @@
 				"/usr/share/vohive/install_core.sh": [ "exec" ],
 				"/usr/share/vohive/rollback_core.sh": [ "exec" ],
 				"/usr/share/vohive/service.sh": [ "exec" ],
-				"/usr/share/vohive/clear_logs.sh": [ "exec" ]
+				"/usr/share/vohive/clear_logs.sh": [ "exec" ],
+				"/usr/share/vohive/update_plugin.sh": [ "exec" ]
 			}
 		}
 	}

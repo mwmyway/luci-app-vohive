@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-vohive
-PKG_VERSION:=0.1.0
+PKG_VERSION:=0.1.1
 PKG_RELEASE:=1
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=VoHive
@@ -30,6 +30,8 @@ endef
 
 define Package/luci-app-vohive/install
 	$(CP) ./root/* $(1)/
+	$(INSTALL_DIR) $(1)/usr/share/vohive
+	echo "$(PKG_VERSION)" > $(1)/usr/share/vohive/plugin_version
 endef
 
 define Package/luci-app-vohive/postinst

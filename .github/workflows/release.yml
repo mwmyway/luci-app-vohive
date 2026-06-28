@@ -21,7 +21,7 @@ jobs:
     permissions:
       contents: write
     env:
-      LUCI_APP_VERSION: 0.1.0
+      LUCI_APP_VERSION: 0.1.1
       VOHIVE_VERSION: ${{ github.event.inputs.vohive_version || 'v1.4.3' }}
       OPENWRT_ARCH: ${{ github.event.inputs.openwrt_arch || 'aarch64_cortex-a53' }}
     steps:
@@ -36,6 +36,7 @@ jobs:
           mkdir -p build/luci-app-vohive/control build/luci-app-vohive/data
           mkdir -p build/vohive-core/control build/vohive-core/data
           cp -a luci-app-vohive/root/. build/luci-app-vohive/data/
+          printf '%s\n' "$LUCI_APP_VERSION" > build/luci-app-vohive/data/usr/share/vohive/plugin_version
           mkdir -p build/vohive-core/data/etc/vohive/bin
 
       - name: Download VoHive core
