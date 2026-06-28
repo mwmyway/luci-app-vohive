@@ -4,6 +4,7 @@
 'require fs';
 'require ui';
 'require uci';
+'require dom';
 'require poll';
 
 function parseJson(text) {
@@ -48,8 +49,7 @@ return view.extend({
 		return Promise.all([
 			uci.load('vohive'),
 			fs.exec_direct('/usr/share/vohive/status.sh', []).catch(function() { return '{}'; }),
-			fs.exec_direct('/usr/share/vohive/logs.sh', [ '100' ]).catch(function() { return ''; }),
-			fs.exec_direct('/usr/share/vohive/releases.sh', [ '5' ]).catch(function() { return '{}'; })
+			fs.exec_direct('/usr/share/vohive/logs.sh', [ '100' ]).catch(function() { return ''; })
 		]);
 	},
 
@@ -69,6 +69,15 @@ return view.extend({
 			return E('tr', {}, [ E('td', {}, row[0]), E('td', {}, row[1]) ]);
 		}));
 
+		var notice = null;
+
+		if (canUpdate)
+			notice = E('div', { 'class': 'alert-message warning' }, _('当前核心不是最新版本，可以选择最新版本后安装/更新。'));
+		else if (status.core_installed && releases.latest && status.core_version == releases.latest)
+			notice = E('div', { 'class': 'alert-message success' }, _('当前核心已是最新版本。'));
+		else if (releases.ok === false)
+			notice = E('div', { 'class': 'alert-message warning' }, releases.message || _('无法获取 Release 版本列表。'));
+
 		var nodes = [
 			E('div', { 'class': 'cbi-section' }, [
 				E('h3', {}, _('核心状态')),
@@ -76,12 +85,8 @@ return view.extend({
 			])
 		];
 
-		if (canUpdate)
-			nodes.push(E('div', { 'class': 'alert-message warning' }, _('当前核心不是最新版本，可以选择最新版本后安装/更新。')));
-		else if (status.core_installed && releases.latest && status.core_version == releases.latest)
-			nodes.push(E('div', { 'class': 'alert-message success' }, _('当前核心已是最新版本。')));
-		else if (releases.ok === false)
-			nodes.push(E('div', { 'class': 'alert-message warning' }, releases.message || _('无法获取 Release 版本列表。')));
+		if (notice)
+			nodes.unshift(notice);
 
 		return E('div', {}, nodes);
 	},
@@ -127,6 +132,25 @@ return view.extend({
 				mapEl
 			]);
 		}.bind(this));
+	},
+
+	loadCorePane: function(corePane, status) {
+		if (corePane.getAttribute('data-loaded') === 'true' || corePane.getAttribute('data-loading') === 'true')
+			return;
+
+		corePane.setAttribute('data-loading', 'true');
+		dom.content(corePane, E('div', { 'class': 'cbi-section' }, E('em', { 'class': 'spinning' }, _('正在加载 Release 版本列表...'))));
+
+		return fs.exec_direct('/usr/share/vohive/releases.sh', [ '5' ])
+			.catch(function() { return '{}'; })
+			.then(function(text) {
+				var releases = parseJson(text);
+				return this.renderCoreMap(status, releases).then(function(coreEl) {
+					corePane.setAttribute('data-loaded', 'true');
+					corePane.removeAttribute('data-loading');
+					dom.content(corePane, coreEl);
+				});
+			}.bind(this));
 	},
 
 	renderConfigMap: function() {
@@ -234,19 +258,25 @@ return view.extend({
 	render: function(data) {
 		var status = parseJson(data[1]);
 		var logs = data[2] || '';
-		var releases = parseJson(data[3]);
 
 		return Promise.all([
-			this.renderCoreMap(status, releases),
 			this.renderConfigMap()
 		]).then(function(rendered) {
+			var corePane = E('div', { 'data-tab': 'core', 'data-tab-title': _('核心管理') }, [
+				E('div', { 'class': 'cbi-section' }, E('em', {}, _('点击核心管理后加载版本列表。')))
+			]);
+
+			corePane.addEventListener('cbi-tab-active', function() {
+				this.loadCorePane(corePane, status);
+			}.bind(this));
+
 			var panes = E('div', {}, [
 				E('div', { 'data-tab': 'home', 'data-tab-title': _('首页') }, [
 					this.renderStatus(status),
 					this.renderServiceButtons()
 				]),
-				E('div', { 'data-tab': 'core', 'data-tab-title': _('核心管理') }, rendered[0]),
-				E('div', { 'data-tab': 'config', 'data-tab-title': _('基础配置') }, rendered[1]),
+				corePane,
+				E('div', { 'data-tab': 'config', 'data-tab-title': _('基础配置') }, rendered[0]),
 				E('div', { 'data-tab': 'logs', 'data-tab-title': _('日志') }, [
 					E('div', { 'class': 'cbi-section' }, [
 						E('h3', {}, _('日志')),
