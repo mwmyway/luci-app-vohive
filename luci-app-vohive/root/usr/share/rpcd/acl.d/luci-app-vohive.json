@@ -7,7 +7,8 @@
 				"/usr/share/vohive/status.sh": [ "exec" ],
 				"/usr/share/vohive/logs.sh": [ "exec" ],
 				"/usr/share/vohive/releases.sh": [ "exec" ],
-				"/usr/share/vohive/plugin_status.sh": [ "exec" ]
+				"/usr/share/vohive/plugin_status.sh": [ "exec" ],
+				"/usr/share/vohive/device_probe.sh": [ "exec" ]
 			}
 		},
 		"write": {

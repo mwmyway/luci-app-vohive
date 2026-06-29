@@ -396,7 +396,7 @@ return view.extend({
 		devicePane.setAttribute('data-loading', 'true');
 		dom.content(devicePane, E('div', { 'class': 'cbi-section' }, loadingText(_('正在探测设备...'))));
 
-		return fs.exec_direct('/usr/share/vohive/device_tools.sh', [ 'probe' ])
+		return fs.exec_direct('/usr/share/vohive/device_probe.sh', [ 'probe' ])
 			.catch(function(e) {
 				return JSON.stringify({ ok: false, message: e.message || String(e), ports: [] });
 			})

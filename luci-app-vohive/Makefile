@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-vohive
-PKG_VERSION?=0.1.13
+PKG_VERSION?=0.1.14
 PKG_RELEASE:=1
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=VoHive
@@ -39,6 +39,9 @@ define Package/luci-app-vohive/postinst
 #!/bin/sh
 [ -n "$${IPKG_INSTROOT}" ] || {
 	mkdir -p /etc/vohive/config /etc/vohive/data /tmp/vohive/logs /tmp/vohive/download
+	if [ -x /etc/init.d/rpcd ]; then
+		/etc/init.d/rpcd reload >/dev/null 2>&1 || /etc/init.d/rpcd restart >/dev/null 2>&1 || true
+	fi
 }
 exit 0
 endef
