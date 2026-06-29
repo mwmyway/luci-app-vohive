@@ -40,15 +40,15 @@ https://github.com/iniwex5/vohive-release
 从 GitHub Release 下载并安装：
 
 ```sh
-opkg install luci-app-vohive_<version>-1_all.ipk
+opkg install luci-app-vohive_<version>-r1_all.ipk
 ```
 
 如果需要内置核心：
 
 ```sh
-opkg install luci-app-vohive_<version>-1_all.ipk vohive-core-arm64_v1.4.3-1_all.ipk
-opkg install luci-app-vohive_<version>-1_all.ipk vohive-core-amd64_v1.4.3-1_all.ipk
-opkg install luci-app-vohive_<version>-1_all.ipk vohive-core-armv7_v1.4.3-1_all.ipk
+opkg install luci-app-vohive_<version>-r1_all.ipk vohive-core-arm64_v1.4.3-r1_all.ipk
+opkg install luci-app-vohive_<version>-r1_all.ipk vohive-core-amd64_v1.4.3-r1_all.ipk
+opkg install luci-app-vohive_<version>-r1_all.ipk vohive-core-armv7_v1.4.3-r1_all.ipk
 ```
 
 也可以只安装 `luci-app-vohive`，进入 LuCI 页面后点击“安装/更新核心”。
@@ -73,10 +73,10 @@ git push origin v0.1.2
 Release 产物：
 
 ```text
-luci-app-vohive_<version>-1_all.ipk
-vohive-core-arm64_v1.4.3-1_all.ipk
-vohive-core-amd64_v1.4.3-1_all.ipk
-vohive-core-armv7_v1.4.3-1_all.ipk
+luci-app-vohive_<version>-r1_all.ipk
+vohive-core-arm64_v1.4.3-r1_all.ipk
+vohive-core-amd64_v1.4.3-r1_all.ipk
+vohive-core-armv7_v1.4.3-r1_all.ipk
 sha256sums.txt
 ```
 

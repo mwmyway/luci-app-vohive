@@ -13,9 +13,17 @@ case "$limit" in
 esac
 [ "$limit" -gt 0 ] && [ "$limit" -le 20 ] || limit=5
 
-current="$(cat "$VERSION_FILE" 2>/dev/null || true)"
+normalize_plugin_version() {
+	local version="${1#v}"
+	version="${version%-r*}"
+	version="${version%-[0-9]*}"
+	printf '%s' "$version"
+}
+
+current="$(opkg status luci-app-vohive 2>/dev/null | awk '/^Version:/ {print $2; exit}' || true)"
+[ -n "$current" ] || current="$(cat "$VERSION_FILE" 2>/dev/null || true)"
 [ -n "$current" ] || current="unknown"
-current_norm="${current#v}"
+current_norm="$(normalize_plugin_version "$current")"
 
 json="$(curl -fsSL --show-error --connect-timeout 8 --max-time 25 "https://api.github.com/repos/$PLUGIN_REPO/releases?per_page=$limit" 2>/tmp/vohive-plugin-releases.err)" || {
 	msg="$(cat /tmp/vohive-plugin-releases.err 2>/dev/null || true)"
@@ -27,7 +35,7 @@ json="$(curl -fsSL --show-error --connect-timeout 8 --max-time 25 "https://api.g
 }
 
 latest="$(printf '%s' "$json" | jsonfilter -e '@[0].tag_name' 2>/dev/null || true)"
-latest_norm="${latest#v}"
+latest_norm="$(normalize_plugin_version "$latest")"
 has_update=false
 [ -n "$latest_norm" ] && [ "$current_norm" != "$latest_norm" ] && has_update=true
 

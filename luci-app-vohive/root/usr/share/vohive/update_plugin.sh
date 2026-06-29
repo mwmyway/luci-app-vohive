@@ -33,6 +33,7 @@ json="$(curl -fsSL --show-error --connect-timeout 15 --retry 2 "https://api.gith
 
 tag="$(printf '%s' "$json" | jsonfilter -e '@.tag_name' 2>/dev/null || true)"
 [ -n "$tag" ] || fail "无法解析插件最新版本"
+tag_norm="${tag#v}"
 
 asset=""
 i=0
@@ -71,6 +72,16 @@ opkg install "$ipk" >/tmp/vohive-plugin-opkg.log 2>&1 || {
 	fail "安装 LuCI 插件失败: $msg"
 }
 
+installed_version="$(opkg status luci-app-vohive 2>/dev/null | awk '/^Version:/ {print $2; exit}' || true)"
+installed_norm="${installed_version#v}"
+installed_norm="${installed_norm%-r*}"
+installed_norm="${installed_norm%-[0-9]*}"
+[ "$installed_norm" = "$tag_norm" ] || {
+	msg="$(tail -n 20 /tmp/vohive-plugin-opkg.log 2>/dev/null || true)"
+	fail "安装后版本仍为 ${installed_version:-unknown}，期望 $tag。$msg"
+}
+
+printf '%s\n' "$tag_norm" > /usr/share/vohive/plugin_version 2>/dev/null || true
 rm -rf /tmp/luci-indexcache /tmp/luci-modulecache
 
 printf '{"ok":true,"message":"%s"}\n' "$(json_escape "LuCI 插件已更新到 $tag，页面即将刷新。")"

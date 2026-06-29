@@ -30,6 +30,8 @@ jobs:
             version="0.0.0-dev"
           fi
           printf 'LUCI_APP_VERSION=%s\n' "$version" >> "$GITHUB_ENV"
+          printf 'LUCI_APP_PACKAGE_VERSION=%s-r1\n' "$version" >> "$GITHUB_ENV"
+          printf 'VOHIVE_PACKAGE_VERSION=%s-r1\n' "$VOHIVE_VERSION" >> "$GITHUB_ENV"
 
       - name: Install packaging tools
         run: sudo apt-get update && sudo apt-get install -y file
@@ -62,7 +64,7 @@ jobs:
           set -eu
           cat > build/luci-app-vohive/control/control <<EOF
           Package: luci-app-vohive
-          Version: ${LUCI_APP_VERSION}-1
+          Version: ${LUCI_APP_PACKAGE_VERSION}
           Architecture: all
           Maintainer: VoHive
           Section: luci
@@ -95,7 +97,7 @@ jobs:
 
             {
               printf 'Package: %s\n' "$pkg"
-              printf 'Version: %s-1\n' "$VOHIVE_VERSION"
+              printf 'Version: %s\n' "$VOHIVE_PACKAGE_VERSION"
               printf 'Architecture: all\n'
               printf 'Maintainer: VoHive\n'
               printf 'Section: utils\n'
@@ -137,9 +139,9 @@ jobs:
             tar --numeric-owner --owner=0 --group=0 -czf "$out" -C "$work" ./debian-binary ./data.tar.gz ./control.tar.gz
           }
 
-          build_ipk luci-app-vohive "${LUCI_APP_VERSION}-1" all
+          build_ipk luci-app-vohive "${LUCI_APP_PACKAGE_VERSION}" all
           for arch in arm64 amd64 armv7; do
-            build_ipk "vohive-core-$arch" "${VOHIVE_VERSION}-1" all
+            build_ipk "vohive-core-$arch" "${VOHIVE_PACKAGE_VERSION}" all
           done
           for ipk in artifacts/*.ipk; do
             file "$ipk"
@@ -155,10 +157,10 @@ jobs:
 
           ### 安装包说明
 
-          - \`luci-app-vohive_${LUCI_APP_VERSION}-1_all.ipk\`: LuCI 管理页面，不包含 VoHive core。安装后可在页面下载/安装核心。
-          - \`vohive-core-arm64_${VOHIVE_VERSION}-1_all.ipk\`: 仅包含 \`vohive_${VOHIVE_VERSION}_linux_arm64\` core。
-          - \`vohive-core-amd64_${VOHIVE_VERSION}-1_all.ipk\`: 仅包含 \`vohive_${VOHIVE_VERSION}_linux_amd64\` core。
-          - \`vohive-core-armv7_${VOHIVE_VERSION}-1_all.ipk\`: 仅包含 \`vohive_${VOHIVE_VERSION}_linux_armv7\` core。
+          - \`luci-app-vohive_${LUCI_APP_PACKAGE_VERSION}_all.ipk\`: LuCI 管理页面，不包含 VoHive core。安装后可在页面下载/安装核心。
+          - \`vohive-core-arm64_${VOHIVE_PACKAGE_VERSION}_all.ipk\`: 仅包含 \`vohive_${VOHIVE_VERSION}_linux_arm64\` core。
+          - \`vohive-core-amd64_${VOHIVE_PACKAGE_VERSION}_all.ipk\`: 仅包含 \`vohive_${VOHIVE_VERSION}_linux_amd64\` core。
+          - \`vohive-core-armv7_${VOHIVE_PACKAGE_VERSION}_all.ipk\`: 仅包含 \`vohive_${VOHIVE_VERSION}_linux_armv7\` core。
 
           ### 架构选择
 
@@ -171,21 +173,21 @@ jobs:
           只安装 LuCI 管理页面：
 
           \`\`\`sh
-          opkg install luci-app-vohive_${LUCI_APP_VERSION}-1_all.ipk
+          opkg install luci-app-vohive_${LUCI_APP_PACKAGE_VERSION}_all.ipk
           \`\`\`
 
           一步到位安装 LuCI + core，按设备架构选择一个 core 包：
 
           \`\`\`sh
-          opkg install luci-app-vohive_${LUCI_APP_VERSION}-1_all.ipk vohive-core-arm64_${VOHIVE_VERSION}-1_all.ipk
-          opkg install luci-app-vohive_${LUCI_APP_VERSION}-1_all.ipk vohive-core-amd64_${VOHIVE_VERSION}-1_all.ipk
-          opkg install luci-app-vohive_${LUCI_APP_VERSION}-1_all.ipk vohive-core-armv7_${VOHIVE_VERSION}-1_all.ipk
+          opkg install luci-app-vohive_${LUCI_APP_PACKAGE_VERSION}_all.ipk vohive-core-arm64_${VOHIVE_PACKAGE_VERSION}_all.ipk
+          opkg install luci-app-vohive_${LUCI_APP_PACKAGE_VERSION}_all.ipk vohive-core-amd64_${VOHIVE_PACKAGE_VERSION}_all.ipk
+          opkg install luci-app-vohive_${LUCI_APP_PACKAGE_VERSION}_all.ipk vohive-core-armv7_${VOHIVE_PACKAGE_VERSION}_all.ipk
           \`\`\`
 
           已安装 LuCI 后，只安装/替换 core：
 
           \`\`\`sh
-          opkg install vohive-core-arm64_${VOHIVE_VERSION}-1_all.ipk
+          opkg install vohive-core-arm64_${VOHIVE_PACKAGE_VERSION}_all.ipk
           \`\`\`
           EOF
 
