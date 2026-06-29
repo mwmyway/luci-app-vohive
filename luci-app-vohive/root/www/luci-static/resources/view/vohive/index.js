@@ -34,6 +34,29 @@ function notifyResultAndReload(text) {
 	window.setTimeout(function() { location.reload(); }, 1500);
 }
 
+function resultDetails(result) {
+	if (!result || !result.output)
+		return '';
+
+	return E('details', { 'style': 'margin-top:1em;' }, [
+		E('summary', {}, _('查看详细输出')),
+		E('pre', {
+			'style': [
+				'white-space: pre-wrap',
+				'max-height: 320px',
+				'overflow: auto',
+				'margin-top: .75em',
+				'padding: 1em',
+				'border: 1px solid var(--border-color-medium)',
+				'border-radius: 6px',
+				'background: var(--background-color-low)',
+				'font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+				'font-size: 12px'
+			].join(';')
+		}, result.output)
+	]);
+}
+
 function runScript(path, args) {
 	return fs.exec_direct(path, args || []).then(function(text) {
 		notifyResult(text);
@@ -369,6 +392,162 @@ return view.extend({
 			}.bind(this));
 	},
 
+	loadDevicePane: function(devicePane, result) {
+		devicePane.setAttribute('data-loading', 'true');
+		dom.content(devicePane, E('div', { 'class': 'cbi-section' }, loadingText(_('正在探测设备...'))));
+
+		return fs.exec_direct('/usr/share/vohive/device_tools.sh', [ 'probe' ])
+			.catch(function(e) {
+				return JSON.stringify({ ok: false, message: e.message || String(e), ports: [] });
+			})
+			.then(function(text) {
+				var data = parseJson(text);
+				devicePane.setAttribute('data-loaded', 'true');
+				devicePane.removeAttribute('data-loading');
+				dom.content(devicePane, this.renderDeviceTools(devicePane, data, result));
+			}.bind(this));
+	},
+
+	runDeviceTool: function(devicePane, args, confirmText) {
+		if (confirmText && !window.confirm(confirmText))
+			return Promise.resolve();
+
+		dom.content(devicePane, E('div', { 'class': 'cbi-section' }, loadingText(_('正在执行操作...'))));
+
+		return fs.exec_direct('/usr/share/vohive/device_tools.sh', args)
+			.catch(function(e) {
+				return JSON.stringify({ ok: false, message: e.message || String(e) });
+			})
+			.then(function(text) {
+				var result = parseJson(text);
+				ui.addNotification(null, E('p', {}, result.message || (result.ok === false ? _('操作失败') : _('操作完成'))), result.ok === false ? 'danger' : 'info');
+				return this.loadDevicePane(devicePane, result);
+			}.bind(this));
+	},
+
+	renderDependencyState: function(label, installed) {
+		return E('span', {
+			'style': 'color:%s; font-weight:700;'.format(installed ? '#37a24d' : '#d9534f')
+		}, installed ? _('%s: 已安装').format(label) : _('%s: 未安装').format(label));
+	},
+
+	renderDeviceDependencies: function(devicePane, data) {
+		return E('div', { 'class': 'cbi-section' }, [
+			E('h3', {}, _('依赖状态')),
+			E('div', { 'style': 'display:flex; gap:1em; flex-wrap:wrap; align-items:center;' }, [
+				this.renderDependencyState('kmod-usb-serial', data.serial_driver_installed),
+				this.renderDependencyState('kmod-usb-serial-option', data.option_driver_installed),
+				this.renderDependencyState('socat', data.socat_installed),
+				data.serial_driver_installed && data.option_driver_installed ? '' : E('button', {
+					'class': 'btn cbi-button cbi-button-action',
+					'click': ui.createHandlerFn(this, function() {
+						return this.runDeviceTool(devicePane, [ 'install_serial_drivers' ], _('确认安装串口驱动吗？\n\n这会执行 opkg update && opkg install kmod-usb-serial kmod-usb-serial-option。\n内核模块包需要匹配当前固件内核版本。'));
+					})
+				}, _('安装串口驱动')),
+				data.socat_installed ? '' : E('button', {
+					'class': 'btn cbi-button cbi-button-action',
+					'click': ui.createHandlerFn(this, function() {
+						return this.runDeviceTool(devicePane, [ 'install_socat' ], _('确认安装 socat 吗？\n\n这会执行 opkg update && opkg install socat。\n安装包会占用路由器存储空间，需要可用网络。'));
+					})
+				}, _('安装 socat'))
+			])
+		]);
+	},
+
+	deviceIdentityLabel: function(port) {
+		if (port.identity_label && port.identity_label != _('未知'))
+			return port.identity_label;
+		return port.usb_config || _('未知');
+	},
+
+	renderPortAction: function(devicePane, port) {
+		if (port.status != 'ok')
+			return '-';
+
+		if (port.identity == 'dji')
+			return E('button', {
+				'class': 'btn cbi-button cbi-button-apply',
+				'click': ui.createHandlerFn(this, function() {
+					return this.runDeviceTool(devicePane, [ 'convert', port.port, 'ec25' ], _('确认要将 %s 转换为 Quectel EC25 身份吗？\n\n此操作会写入模块内部 USB 配置，并重启模块。执行前会停止 VoHive，完成后会重新启动 VoHive。').format(port.port));
+				})
+			}, _('改成 EC25'));
+
+		if (port.identity == 'ec25')
+			return E('button', {
+				'class': 'btn cbi-button cbi-button-reset',
+				'click': ui.createHandlerFn(this, function() {
+					return this.runDeviceTool(devicePane, [ 'convert', port.port, 'dji' ], _('确认要将 %s 恢复为 DJI 身份吗？\n\n此操作会写入模块内部 USB 配置，并重启模块。执行前会停止 VoHive，完成后会重新启动 VoHive。').format(port.port));
+				})
+			}, _('恢复 DJI 身份'));
+
+		return _('暂不支持');
+	},
+
+	renderProbeTable: function(devicePane, data) {
+		var ports = data.ports || [];
+
+		if (!ports.length)
+			return E('div', { 'class': 'cbi-section' }, [
+				E('h3', {}, _('串口探测')),
+				E('div', { 'class': 'alert-message warning' }, _('未发现 /dev/ttyUSB* 串口。请确认模块已接入，且串口驱动已安装。'))
+			]);
+
+		return E('div', { 'class': 'cbi-section' }, [
+			E('h3', {}, _('串口探测')),
+			E('table', { 'class': 'table' }, [
+				E('tr', {}, [
+					E('th', {}, _('串口设备')),
+					E('th', {}, _('响应状态')),
+					E('th', {}, _('当前身份')),
+					E('th', {}, _('模块信息')),
+					E('th', {}, _('操作'))
+				])
+			].concat(ports.map(function(port) {
+				return E('tr', {}, [
+					E('td', {}, port.port || '-'),
+					E('td', {}, port.status == 'ok' ? _('可用') : _('无响应')),
+					E('td', {}, this.deviceIdentityLabel(port)),
+					E('td', {}, port.module || '-'),
+					E('td', {}, this.renderPortAction(devicePane, port))
+				]);
+			}.bind(this))))
+		]);
+	},
+
+	renderDeviceTools: function(devicePane, data, result) {
+		var nodes = [
+			E('div', { 'class': 'cbi-section' }, [
+				E('div', { 'style': 'display:flex; align-items:center; justify-content:space-between; gap:1em; flex-wrap:wrap;' }, [
+					E('h3', { 'style': 'margin-bottom:.75em;' }, _('设备工具')),
+					E('button', {
+						'class': 'btn cbi-button cbi-button-reload',
+						'click': ui.createHandlerFn(this, function() {
+							return this.loadDevicePane(devicePane);
+						})
+					}, _('刷新探测'))
+				]),
+				E('p', {}, _('专用于大疆 4G 模块与 Quectel EC25 USB 身份转换。转换会写入模块内部配置并重启模块。'))
+			])
+		];
+
+		if (result)
+			nodes.push(E('div', { 'class': 'alert-message %s'.format(result.ok === false ? 'danger' : 'success') }, [
+				E('p', {}, result.message || (result.ok === false ? _('操作失败') : _('操作完成'))),
+				resultDetails(result)
+			]));
+
+		if (data.ok === false)
+			nodes.push(E('div', { 'class': 'alert-message danger' }, data.message || _('设备探测失败。')));
+
+		nodes.push(this.renderDeviceDependencies(devicePane, data));
+
+		if (!data.socat_installed && !(data.stty_available && data.timeout_available))
+			nodes.push(E('div', { 'class': 'alert-message warning' }, _('当前系统缺少可用的串口读取工具。请安装 socat 后重试。')));
+
+		nodes.push(this.renderProbeTable(devicePane, data));
+		return E('div', {}, nodes);
+	},
+
 	renderConfigMap: function() {
 		var m = new form.Map('vohive');
 		var s, o;
@@ -619,6 +798,15 @@ return view.extend({
 				this.loadCorePane(corePane, status);
 			}.bind(this));
 
+			var devicePane = E('div', { 'data-tab': 'device', 'data-tab-title': _('设备工具') }, [
+				E('div', { 'class': 'cbi-section' }, E('em', {}, _('点击设备工具后探测串口设备。')))
+			]);
+
+			devicePane.addEventListener('cbi-tab-active', function() {
+				if (devicePane.getAttribute('data-loaded') !== 'true' && devicePane.getAttribute('data-loading') !== 'true')
+					this.loadDevicePane(devicePane);
+			}.bind(this));
+
 			var pluginPane = E('div', { 'data-tab': 'plugin', 'data-tab-title': _('插件管理') }, [
 				E('div', { 'class': 'cbi-section' }, E('em', {}, _('点击插件管理后加载插件版本信息。')))
 			]);
@@ -633,6 +821,7 @@ return view.extend({
 					this.renderServiceButtons()
 				]),
 				corePane,
+				devicePane,
 				E('div', { 'data-tab': 'config', 'data-tab-title': _('基础配置') }, rendered[0]),
 				E('div', { 'data-tab': 'logs', 'data-tab-title': _('日志') }, this.renderLogs(logs)),
 				pluginPane

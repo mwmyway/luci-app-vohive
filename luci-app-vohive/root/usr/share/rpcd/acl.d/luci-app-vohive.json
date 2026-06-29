@@ -18,7 +18,8 @@
 				"/usr/share/vohive/rollback_core.sh": [ "exec" ],
 				"/usr/share/vohive/service.sh": [ "exec" ],
 				"/usr/share/vohive/clear_logs.sh": [ "exec" ],
-				"/usr/share/vohive/update_plugin.sh": [ "exec" ]
+				"/usr/share/vohive/update_plugin.sh": [ "exec" ],
+				"/usr/share/vohive/device_tools.sh": [ "exec" ]
 			}
 		}
 	}
