@@ -48,9 +48,9 @@ opkg install luci-app-vohive_<version>-r1_all.ipk
 如果需要内置核心：
 
 ```sh
-opkg install luci-app-vohive_<version>-r1_all.ipk vohive-core-arm64_1.5.0-r1_all.ipk
-opkg install luci-app-vohive_<version>-r1_all.ipk vohive-core-amd64_1.5.0-r1_all.ipk
-opkg install luci-app-vohive_<version>-r1_all.ipk vohive-core-armv7_1.5.0-r1_all.ipk
+opkg install luci-app-vohive_<version>-r1_all.ipk vohive-core-arm64_1.5.4-r1_all.ipk
+opkg install luci-app-vohive_<version>-r1_all.ipk vohive-core-amd64_1.5.4-r1_all.ipk
+opkg install luci-app-vohive_<version>-r1_all.ipk vohive-core-armv7_1.5.4-r1_all.ipk
 ```
 
 也可以只安装 `luci-app-vohive`，进入 LuCI 页面后点击“安装/更新核心”。
@@ -76,9 +76,9 @@ Release 产物：
 
 ```text
 luci-app-vohive_<version>-r1_all.ipk
-vohive-core-arm64_1.5.0-r1_all.ipk
-vohive-core-amd64_1.5.0-r1_all.ipk
-vohive-core-armv7_1.5.0-r1_all.ipk
+vohive-core-arm64_1.5.4-r1_all.ipk
+vohive-core-amd64_1.5.4-r1_all.ipk
+vohive-core-armv7_1.5.4-r1_all.ipk
 对应的 OpenWrt 25 apk 包
 sha256sums.txt
 ```
@@ -89,7 +89,7 @@ sha256sums.txt
 
 ```sh
 make package/vohive/luci-app-vohive/compile V=s PKG_VERSION=0.1.2
-make package/vohive/vohive-core/compile V=s VOHIVE_VERSION=v1.5.0
+make package/vohive/vohive-core/compile V=s VOHIVE_VERSION=v1.5.4
 ```
 
 ## TODO
