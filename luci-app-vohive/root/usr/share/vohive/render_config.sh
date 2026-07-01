@@ -24,6 +24,31 @@ yaml_quote() {
 	printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/^/"/; s/$/"/'
 }
 
+preserve_unmanaged_config() {
+	local file="$1"
+
+	[ -s "$file" ] || return 0
+
+	awk '
+		function top_key(line) {
+			if (line ~ /^[^[:space:]#][^:]*:/) {
+				key = line
+				sub(/:.*/, "", key)
+				return key
+			}
+			return ""
+		}
+		{
+			key = top_key($0)
+			if (key != "") {
+				keep = (key != "server" && key != "web" && key != "data" && key != "log")
+			}
+			if (keep)
+				print
+		}
+	' "$file"
+}
+
 host="$(uci_get host '0.0.0.0')"
 port="$(uci_get port '7575')"
 username="$(uci_get username 'admin')"
@@ -67,6 +92,11 @@ tmp="$CONFIG_FILE.tmp.$$"
 	printf 'log:\n'
 	printf '  level: %s\n' "$(yaml_quote "$log_level")"
 	printf '  path: %s\n' "$(yaml_quote "$TMP_LOG_DIR")"
+	preserved="$(preserve_unmanaged_config "$CONFIG_FILE")"
+	if [ -n "$preserved" ]; then
+		printf '\n'
+		printf '%s\n' "$preserved"
+	fi
 } > "$tmp"
 
 mv "$tmp" "$CONFIG_FILE"
