@@ -290,6 +290,59 @@ update_plugin() {
 	finish_ok "LuCI 插件已更新到 $tag，页面即将刷新。"
 }
 
+convert_identity() {
+	local port="${1:-}"
+	local target="${2:-}"
+	local result message
+
+	[ -n "$port" ] || fail "缺少串口参数"
+	[ -n "$target" ] || fail "缺少目标身份"
+
+	task_write_status "$id" "$type" "running" "prepare" "准备转换 USB 身份" "" 0 0 0 0
+	if result="$(VOHIVE_TASK_ID="$id" VOHIVE_TASK_TYPE="$type" /usr/share/vohive/device_tools.sh convert "$port" "$target" 2>&1)"; then
+		message="$(printf '%s' "$result" | jsonfilter -e '@.message' 2>/dev/null || true)"
+		finish_ok "${message:-设备身份转换已完成}"
+	else
+		message="$(printf '%s' "$result" | jsonfilter -e '@.message' 2>/dev/null || true)"
+		fail "${message:-$result}"
+	fi
+}
+
+switch_usbnet() {
+	local port="${1:-}"
+	local target="${2:-}"
+	local result message
+
+	[ -n "$port" ] || fail "缺少串口参数"
+	[ -n "$target" ] || fail "缺少目标模式"
+
+	task_write_status "$id" "$type" "running" "prepare" "准备切换 USB 网络模式" "" 0 0 0 0
+	if result="$(VOHIVE_TASK_ID="$id" VOHIVE_TASK_TYPE="$type" /usr/share/vohive/device_tools.sh switch_usbnet "$port" "$target" 2>&1)"; then
+		message="$(printf '%s' "$result" | jsonfilter -e '@.message' 2>/dev/null || true)"
+		finish_ok "${message:-USB 网络模式切换已完成}"
+	else
+		message="$(printf '%s' "$result" | jsonfilter -e '@.message' 2>/dev/null || true)"
+		fail "${message:-$result}"
+	fi
+}
+
+probe_device() {
+	local tmp="/tmp/vohive/device-probe.json.tmp"
+	local cache="/tmp/vohive/device-probe.json"
+	local result message
+
+	task_write_status "$id" "$type" "running" "probe" "正在探测 USB 串口设备" "" 0 0 0 0
+	if result="$(VOHIVE_TASK_ID="$id" VOHIVE_TASK_TYPE="$type" /usr/share/vohive/device_tools.sh probe 2>&1)"; then
+		mkdir -p /tmp/vohive
+		printf '%s\n' "$result" > "$tmp"
+		mv -f "$tmp" "$cache"
+		finish_ok "设备探测完成"
+	else
+		message="$(printf '%s' "$result" | jsonfilter -e '@.message' 2>/dev/null || true)"
+		fail "${message:-$result}"
+	fi
+}
+
 task_mkdirs
 task_log "$id" "任务启动"
 
@@ -297,5 +350,8 @@ case "$type" in
 	install_core) install_core "$@" ;;
 	rollback_core) rollback_core ;;
 	update_plugin) update_plugin ;;
+	convert_identity) convert_identity "$@" ;;
+	switch_usbnet) switch_usbnet "$@" ;;
+	probe_device) probe_device ;;
 	*) fail "不支持的任务类型: $type" ;;
 esac

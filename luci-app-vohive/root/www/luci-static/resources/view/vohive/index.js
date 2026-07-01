@@ -156,6 +156,10 @@ function taskTitle(type) {
 		return _('回滚 VoHive 核心');
 	case 'update_plugin':
 		return _('更新 LuCI 插件');
+	case 'convert_identity':
+		return _('转换模块 USB 身份');
+	case 'switch_usbnet':
+		return _('切换模块 USB 网络模式');
 	default:
 		return _('更新任务');
 	}
@@ -181,6 +185,9 @@ return view.extend({
 	activeTaskType: null,
 	taskCompletedHandled: false,
 	corePane: null,
+	devicePane: null,
+	deviceProbeTimer: null,
+	deviceProbeTaskId: null,
 
 	handleSaveApply: function(ev, mode) {
 		return this.super('handleSaveApply', [ ev, mode ]).then(function() {
@@ -295,6 +302,12 @@ return view.extend({
 				this.corePane.removeAttribute('data-loaded');
 				this.corePane.removeAttribute('data-loading');
 				return this.loadCorePane(this.corePane, freshStatus || {}, true);
+			}
+
+			if (this.devicePane && (status.type == 'convert_identity' || status.type == 'switch_usbnet')) {
+				this.devicePane.removeAttribute('data-loaded');
+				this.devicePane.removeAttribute('data-loading');
+				return this.loadDevicePane(this.devicePane);
 			}
 		}.bind(this));
 	},
@@ -595,11 +608,20 @@ return view.extend({
 			}.bind(this));
 	},
 
-	loadDevicePane: function(devicePane, result) {
-		devicePane.setAttribute('data-loading', 'true');
-		dom.content(devicePane, E('div', { 'class': 'cbi-section' }, loadingText(_('正在探测设备...'))));
+	renderDeviceProbeLoading: function(devicePane, started, status) {
+		var elapsed = Math.max(0, Math.floor((Date.now() - started) / 1000));
+		var message = status && status.message ? status.message : _('正在探测设备...');
+		var stage = status && status.stage ? status.stage : 'probe';
 
-		return fs.exec_direct('/usr/share/vohive/device_probe.sh', [ 'probe' ])
+		dom.content(devicePane, E('div', { 'class': 'cbi-section' }, [
+			loadingText(message),
+			E('p', { 'style': 'margin-top:.75em; color:var(--text-color-medium);' },
+				_('当前阶段：%s，已等待 %d 秒。设备重新枚举时可能需要更久。').format(stage, elapsed))
+		]));
+	},
+
+	fetchDeviceProbeCache: function(devicePane, result) {
+		return fs.exec_direct('/usr/share/vohive/device_probe.sh', [ 'cache' ])
 			.catch(function(e) {
 				return JSON.stringify({ ok: false, message: e.message || String(e), ports: [] });
 			})
@@ -607,7 +629,96 @@ return view.extend({
 				var data = parseJson(text);
 				devicePane.setAttribute('data-loaded', 'true');
 				devicePane.removeAttribute('data-loading');
+				this.deviceProbeTaskId = null;
 				dom.content(devicePane, this.renderDeviceTools(devicePane, data, result));
+			}.bind(this));
+	},
+
+	finishDeviceProbeLoading: function() {
+		if (this.deviceProbeTimer) {
+			window.clearInterval(this.deviceProbeTimer);
+			this.deviceProbeTimer = null;
+		}
+	},
+
+	pollDeviceProbe: function(devicePane, id, started, result) {
+		return fs.exec_direct('/usr/share/vohive/task_status.sh', [ id ])
+			.then(function(text) {
+				var status = parseJson(text);
+				var terminal = status.state == 'completed' || status.state == 'failed' || status.state == 'canceled';
+
+				if (this.deviceProbeTaskId != id)
+					return;
+
+				if (status.type && status.type != 'probe_device') {
+					this.finishDeviceProbeLoading();
+					this.deviceProbeTaskId = null;
+					devicePane.removeAttribute('data-loading');
+					dom.content(devicePane, this.renderDeviceTools(devicePane, {
+						ok: false,
+						message: _('已有其它后台任务正在运行，请稍后再探测设备。'),
+						ports: []
+					}, result));
+					return;
+				}
+
+				this.renderDeviceProbeLoading(devicePane, started, status);
+				if (!terminal)
+					return;
+
+				this.finishDeviceProbeLoading();
+				if (status.state == 'completed')
+					return this.fetchDeviceProbeCache(devicePane, result);
+
+				devicePane.removeAttribute('data-loading');
+				dom.content(devicePane, this.renderDeviceTools(devicePane, {
+					ok: false,
+					message: status.message || _('设备探测失败。'),
+					ports: []
+				}, result));
+			}.bind(this))
+			.catch(function(e) {
+				this.finishDeviceProbeLoading();
+				this.deviceProbeTaskId = null;
+				devicePane.removeAttribute('data-loading');
+				dom.content(devicePane, this.renderDeviceTools(devicePane, {
+					ok: false,
+					message: e.message || String(e),
+					ports: []
+				}, result));
+			}.bind(this));
+	},
+
+	loadDevicePane: function(devicePane, result) {
+		var started = Date.now();
+
+		this.finishDeviceProbeLoading();
+
+		devicePane.setAttribute('data-loading', 'true');
+		this.renderDeviceProbeLoading(devicePane, started);
+
+		return fs.exec_direct('/usr/share/vohive/task_start.sh', [ 'probe_device' ])
+			.catch(function(e) {
+				return JSON.stringify({ ok: false, message: e.message || String(e) });
+			})
+			.then(function(text) {
+				var task = parseJson(text);
+
+				if (task.ok === false || !task.id) {
+					devicePane.removeAttribute('data-loading');
+					dom.content(devicePane, this.renderDeviceTools(devicePane, {
+						ok: false,
+						message: task.message || _('设备探测启动失败。'),
+						ports: []
+					}, result));
+					return;
+				}
+
+				this.deviceProbeTaskId = task.id;
+				this.pollDeviceProbe(devicePane, task.id, started, result);
+				this.deviceProbeTimer = window.setInterval(function() {
+					this.pollDeviceProbe(devicePane, task.id, started, result);
+				}.bind(this), 1000);
 			}.bind(this));
 	},
 
@@ -663,7 +774,7 @@ return view.extend({
 		return port.usb_config || _('未知');
 	},
 
-	renderPortAction: function(devicePane, port) {
+	renderIdentityAction: function(devicePane, port) {
 		if (port.status != 'ok')
 			return '-';
 
@@ -671,7 +782,9 @@ return view.extend({
 			return E('button', {
 				'class': 'btn cbi-button cbi-button-apply',
 				'click': ui.createHandlerFn(this, function() {
-					return this.runDeviceTool(devicePane, [ 'convert', port.port, 'ec25' ], _('确认要将 %s 转换为 Quectel EC25 身份吗？\n\n此操作会写入模块内部 USB 配置，并重启模块。执行前会停止 VoHive，完成后会重新启动 VoHive。').format(port.port));
+					if (!window.confirm(_('确认要将 %s 转换为 Quectel EC25 身份吗？\n\n此操作会写入模块内部 USB 配置，并重启模块。执行前会停止 VoHive，完成后会重新启动 VoHive。').format(port.port)))
+						return Promise.resolve();
+					return this.startTask('convert_identity', [ port.port, 'ec25' ]);
 				})
 			}, _('改成 EC25'));
 
@@ -679,15 +792,165 @@ return view.extend({
 			return E('button', {
 				'class': 'btn cbi-button cbi-button-reset',
 				'click': ui.createHandlerFn(this, function() {
-					return this.runDeviceTool(devicePane, [ 'convert', port.port, 'dji' ], _('确认要将 %s 恢复为 DJI 身份吗？\n\n此操作会写入模块内部 USB 配置，并重启模块。执行前会停止 VoHive，完成后会重新启动 VoHive。').format(port.port));
+					if (!window.confirm(_('确认要将 %s 恢复为 DJI 身份吗？\n\n此操作会写入模块内部 USB 配置，并重启模块。执行前会停止 VoHive，完成后会重新启动 VoHive。').format(port.port)))
+						return Promise.resolve();
+					return this.startTask('convert_identity', [ port.port, 'dji' ]);
 				})
 			}, _('恢复 DJI 身份'));
 
 		return _('暂不支持');
 	},
 
-	renderProbeTable: function(devicePane, data) {
+	renderUsbnetActions: function(devicePane, port) {
+		var modes = port.usbnet_profile == 'dji' ? [
+			[ 'dji', '0', _('DJI') ],
+			[ 'dji_rndis', '1', 'RNDIS' ],
+			[ 'dji_ecm', '2', 'ECM' ],
+			[ 'dji_ncm', '3', 'NCM' ],
+			[ 'dji_mbim', '4', 'MBIM' ]
+		] : [
+			[ 'qmi', '0', 'QMI' ],
+			[ 'ecm', '1', 'ECM' ],
+			[ 'mbim', '2', 'MBIM' ]
+		];
+
+		if (port.status != 'ok' || !port.can_config || port.usbnet == null || port.usbnet === '')
+			return '-';
+
+		return E('div', { 'style': 'display:flex; gap:.4em; flex-wrap:wrap;' }, modes.map(function(mode) {
+			var selected = String(port.usbnet) == mode[1];
+
+			return E('button', {
+				'class': 'btn cbi-button %s'.format(selected ? 'cbi-button-neutral' : 'cbi-button-action'),
+				'disabled': selected ? 'disabled' : null,
+				'click': selected ? null : ui.createHandlerFn(this, function() {
+					if (!window.confirm(_('确认要将 %s 的 USB 网络模式切换为 %s 吗？\n\n此操作会写入模块内部配置，并重启模块。执行前会停止 VoHive，完成后会重新启动 VoHive。').format(port.port, mode[2])))
+						return Promise.resolve();
+					return this.startTask('switch_usbnet', [ port.port, mode[0] ]);
+				})
+			}, mode[2]);
+		}.bind(this)));
+	},
+
+	renderInfoGrid: function(rows) {
+		var children = [];
+
+		rows.forEach(function(row) {
+			children.push(E('div', { 'style': 'font-weight:700;' }, row[0]));
+			children.push(E('div', { 'style': 'word-break:break-word;' }, row[1] || '-'));
+		});
+
+		return E('div', {
+			'style': 'display:grid; grid-template-columns:minmax(8em, 14em) minmax(0, 1fr); gap:.45em 1em; align-items:start;'
+		}, children);
+	},
+
+	renderPortCard: function(devicePane, port) {
+		var summary = port.summary || {};
+		var details = port.details || [];
+		var statusColor = port.status == 'ok' ? '#37a24d' : '#d9534f';
+		var title = port.port || '-';
+		var usbLabel = port.usb_vidpid ? '%s · %s'.format(port.usb_vidpid, port.usb_identity_label || _('未知')) : _('未读取到 USB VID/PID');
+		var children = [
+			E('div', { 'style': 'display:flex; justify-content:space-between; gap:1em; flex-wrap:wrap; align-items:flex-start;' }, [
+				E('div', {}, [
+					E('h4', { 'style': 'margin:0 0 .35em 0;' }, title),
+					E('div', { 'style': 'color:var(--text-color-medium);' }, usbLabel)
+				]),
+				E('div', { 'style': 'font-weight:700; color:%s;'.format(statusColor) }, port.status == 'ok' ? _('AT 可用') : _('无响应'))
+			])
+		];
+
+		if (port.identity_mismatch)
+			children.push(E('div', { 'class': 'alert-message warning', 'style': 'margin-top:.75em;' }, _('sysfs VID/PID 与 AT 内部 USB 配置不一致，请确认模块重启完成后再执行危险操作。')));
+
+		children.push(
+			this.renderInfoGrid([
+				[ _('端口角色'), port.primary_at ? _('主 AT 口') : (port.status == 'ok' ? _('附属 AT 口') : _('非 AT 口') ) ],
+				[ _('AT 身份'), port.identity_label || _('未知') ],
+				[ _('模块'), port.module || summary.model || '-' ],
+				[ _('固件'), summary.firmware || '-' ],
+				[ _('SIM'), summary.sim || '-' ],
+				[ _('信号'), summary.signal || '-' ],
+				[ _('运营商'), summary.operator || '-' ],
+				[ _('当前网络'), summary.network || '-' ],
+				[ _('USB 网络模式'), port.usbnet_label || _('未知') ],
+				[ _('USB 身份转换'), this.renderIdentityAction(devicePane, port) ],
+				[ _('USB 网络模式切换'), this.renderUsbnetActions(devicePane, port) ]
+			])
+		);
+
+		children.push(
+			E('details', { 'style': 'margin-top:1em;' }, [
+				E('summary', {}, _('详细信息')),
+				this.renderInfoGrid(details.map(function(item) {
+					return [ item.label, item.value || '-' ];
+				})),
+				E('details', { 'style': 'margin-top:.75em;' }, [
+					E('summary', {}, _('完整 AT 输出')),
+					E('pre', {
+						'style': [
+							'white-space: pre-wrap',
+							'max-height: 320px',
+							'overflow: auto',
+							'margin-top: .75em',
+							'padding: 1em',
+							'border: 1px solid var(--border-color-medium)',
+							'border-radius: 6px',
+							'background: var(--background-color-low)',
+							'font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+							'font-size: 12px'
+						].join(';')
+					}, port.output || '-')
+				])
+			])
+		);
+
+		return E('div', {
+			'class': 'cbi-section',
+			'style': 'border:1px solid var(--border-color-medium); border-radius:6px; padding:1em; margin-bottom:1em;'
+		}, children);
+	},
+
+	renderPortRole: function(port) {
+		if (port.primary_at)
+			return _('主 AT 口');
+		if (port.status == 'ok')
+			return _('附属 AT 口');
+		return _('非 AT 口');
+	},
+
+	renderPortDetailsTable: function(ports) {
+		return E('details', { 'style': 'margin-top:1em;' }, [
+			E('summary', {}, _('USB 接口详情')),
+			E('table', { 'class': 'table', 'style': 'margin-top:.75em;' }, [
+				E('tr', {}, [
+					E('th', {}, _('接口')),
+					E('th', {}, _('串口')),
+					E('th', {}, _('角色')),
+					E('th', {}, _('状态')),
+					E('th', {}, _('USB 身份')),
+					E('th', {}, _('AT 身份'))
+				])
+			].concat(ports.map(function(port) {
+				return E('tr', {}, [
+					E('td', {}, port.usb_interface || '-'),
+					E('td', {}, port.port || '-'),
+					E('td', {}, this.renderPortRole(port)),
+					E('td', {}, port.status == 'ok' ? _('AT 可用') : _('未探测')),
+					E('td', {}, port.usb_identity_label || port.usb_vidpid || '-'),
+					E('td', {}, port.identity_label || '-')
+				]);
+			}.bind(this))))
+		]);
+	},
+
+	renderProbeCards: function(devicePane, data) {
 		var ports = data.ports || [];
+		var primaryPorts = ports.filter(function(port) { return port.primary_at; });
+		var identifiedPorts = ports.filter(function(port) { return port.status == 'ok' && port.identity && port.identity != 'unknown'; });
+		var visiblePorts = primaryPorts.length ? primaryPorts : identifiedPorts;
+		var hasHiddenPorts = ports.length > visiblePorts.length;
 
 		if (!ports.length)
 			return E('div', { 'class': 'cbi-section' }, [
@@ -697,23 +960,11 @@ return view.extend({
 
 		return E('div', { 'class': 'cbi-section' }, [
 			E('h3', {}, _('串口探测')),
-			E('table', { 'class': 'table' }, [
-				E('tr', {}, [
-					E('th', {}, _('串口设备')),
-					E('th', {}, _('响应状态')),
-					E('th', {}, _('当前身份')),
-					E('th', {}, _('模块信息')),
-					E('th', {}, _('操作'))
-				])
-			].concat(ports.map(function(port) {
-				return E('tr', {}, [
-					E('td', {}, port.port || '-'),
-					E('td', {}, port.status == 'ok' ? _('可用') : _('无响应')),
-					E('td', {}, this.deviceIdentityLabel(port)),
-					E('td', {}, port.module || '-'),
-					E('td', {}, this.renderPortAction(devicePane, port))
-				]);
-			}.bind(this))))
+			E('p', {}, _('默认只显示身份明确的主 AT 口；其它接口折叠在 USB 接口详情中。')),
+			visiblePorts.length ? E('div', {}, visiblePorts.map(function(port) {
+				return this.renderPortCard(devicePane, port);
+			}.bind(this))) : E('div', { 'class': 'alert-message warning' }, _('未找到身份明确的可操作 AT 口，请展开 USB 接口详情查看原始探测结果。')),
+			hasHiddenPorts ? this.renderPortDetailsTable(ports) : ''
 		]);
 	},
 
@@ -747,7 +998,12 @@ return view.extend({
 		if (!data.socat_installed && !(data.stty_available && data.timeout_available))
 			nodes.push(E('div', { 'class': 'alert-message warning' }, _('当前系统缺少可用的串口读取工具。请安装 socat 后重试。')));
 
-		nodes.push(this.renderProbeTable(devicePane, data));
+		nodes.push(E('div', { 'class': 'cbi-section' }, [
+			E('h3', {}, _('危险操作说明')),
+			E('p', {}, _('USB 身份转换和 USB 网络模式切换会写入模块内部配置并重启模块。操作前会停止 VoHive，完成后会自动启动。'))
+		]));
+
+		nodes.push(this.renderProbeCards(devicePane, data));
 		return E('div', {}, nodes);
 	},
 
@@ -1006,6 +1262,7 @@ return view.extend({
 			var devicePane = E('div', { 'data-tab': 'device', 'data-tab-title': _('设备工具') }, [
 				E('div', { 'class': 'cbi-section' }, E('em', {}, _('点击设备工具后探测串口设备。')))
 			]);
+			this.devicePane = devicePane;
 
 			devicePane.addEventListener('cbi-tab-active', function() {
 				if (devicePane.getAttribute('data-loaded') !== 'true' && devicePane.getAttribute('data-loading') !== 'true')
