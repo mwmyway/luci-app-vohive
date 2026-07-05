@@ -84,6 +84,8 @@ git tag v0.1.18
 git push origin v0.1.18
 ```
 
+也可以通过Actions在线构建
+
 Release 产物：
 
 ```text
