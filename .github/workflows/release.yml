@@ -128,7 +128,7 @@ jobs:
           mkdir -p source/vohive-core/files
           for arch in arm64 amd64 armv7; do
             asset="vohive_${VOHIVE_VERSION}_linux_${arch}"
-            url="https://raw.githubusercontent.com/yer2018/luci-app-vohive/refs/heads/main/vohive-core/files/vohive_v1.5.5-10-gf9eb85d_linux_${arch}"
+            url="https://raw.githubusercontent.com/mwmyway/luci-app-vohive/refs/heads/main/vohive-core/files/vohive_v1.5.5_linux_${arch}"
             curl -fL --connect-timeout 20 --retry 3 "$url" -o "source/vohive-core/files/vohive-${arch}"
             chmod 0755 "source/vohive-core/files/vohive-${arch}"
             file "source/vohive-core/files/vohive-${arch}"
