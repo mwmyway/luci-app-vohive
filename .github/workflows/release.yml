@@ -13,7 +13,8 @@ on:
 
 env:
   TZ: Asia/Shanghai
-  VOHIVE_VERSION: ${{ github.event.inputs.vohive_version || 'v1.5.5' }}
+  # 优先级：手动输入 > tag内置版本 > 默认v1.5.5
+  VOHIVE_VERSION: ${{ github.event.inputs.vohive_version || github.ref_name || 'v1.5.5' }}
 
 jobs:
   prepare:
@@ -29,16 +30,19 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Resolve versions
+      - name: Resolve versions & Generate Release Notes
         id: release_meta
         run: |
           set -eu
-          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+          # 区分触发来源
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            # tag推送触发，使用git tag版本
             tag_name="${GITHUB_REF_NAME}"
             luci_version="${GITHUB_REF_NAME#v}"
           else
-            tag_name="v0.0.0-dev"
-            luci_version="0.0.0-dev"
+            # workflow_dispatch手动触发，使用输入的版本号
+            tag_name="${VOHIVE_VERSION}"
+            luci_version="${VOHIVE_VERSION#v}"
           fi
 
           previous_tag="$(git tag --sort=-v:refname --merged HEAD | grep -v "^${tag_name}$" | head -n 1 || true)"
@@ -48,7 +52,7 @@ jobs:
             echo
             echo "### 更新日志"
             echo
-            if [ -n "$previous_tag" ]; then
+            if [[ -n "$previous_tag" ]]; then
               git log --pretty=format:'- %s (%h)' "${previous_tag}..HEAD"
             else
               git log --pretty=format:'- %s (%h)' -n 20
@@ -73,7 +77,7 @@ jobs:
             echo "- x86_64 / amd64 设备选择 amd64"
             echo "- armv7l / armv7 设备选择 armv7"
             echo
-            if [ -n "$previous_tag" ]; then
+            if [[ -n "$previous_tag" ]]; then
               echo "完整对比: https://github.com/${GITHUB_REPOSITORY}/compare/${previous_tag}...${tag_name}"
             fi
           } > release-notes.md
@@ -128,7 +132,7 @@ jobs:
           mkdir -p source/vohive-core/files
           for arch in arm64 amd64 armv7; do
             asset="vohive_${VOHIVE_VERSION}_linux_${arch}"
-            url="https://raw.githubusercontent.com/mwmyway/luci-app-vohive/refs/heads/main/vohive-core/files/vohive_v1.5.5_linux_${arch}"
+            url="https://raw.githubusercontent.com/mwmyway/luci-app-vohive/refs/heads/main/vohive-core/files/${asset}"
             curl -fL --connect-timeout 20 --retry 3 "$url" -o "source/vohive-core/files/vohive-${arch}"
             chmod 0755 "source/vohive-core/files/vohive-${arch}"
             file "source/vohive-core/files/vohive-${arch}"
@@ -142,7 +146,7 @@ jobs:
           set -eu
           wget "$SDK_SOURCE"
           mkdir -p sdk
-          if [ "${SDK_EXT}" = "tar.zst" ]; then
+          if [[ "${SDK_EXT}" == "tar.zst" ]]; then
             tar --zstd -xf "$SDK_FILE" -C sdk --strip-components=1
           else
             tar -xf "$SDK_FILE" -C sdk --strip-components=1
@@ -193,7 +197,7 @@ jobs:
 
           shopt -s nullglob
           package_files=("$package_dir"/*.${PACKAGE_EXT})
-          if [ ${#package_files[@]} -eq 0 ]; then
+          if [[ ${#package_files[@]} -eq 0 ]]; then
             echo "No .${PACKAGE_EXT} packages were produced in ${package_dir}" >&2
             exit 1
           fi
@@ -225,7 +229,7 @@ jobs:
     needs:
       - prepare
       - build
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -251,20 +255,22 @@ jobs:
           shopt -s nullglob
 
           for dir in artifacts/*; do
-            [ -d "$dir" ] || continue
+            [[ -d "$dir" ]] || continue
             for package in "$dir"/*.ipk "$dir"/*.apk; do
-              [ -f "$package" ] || continue
-              cp "$package" releases/
+              [[ -f "$package" ]] && cp "$package" releases/
+
             done
-            [ -f "$dir/BUILD-INFO.txt" ] && cp "$dir/BUILD-INFO.txt" "releases/$(basename "$dir")-BUILD-INFO.txt"
+            [[ -f "$dir/BUILD-INFO.txt" ]] && cp "$dir/BUILD-INFO.txt" "releases/$(basename "$dir")-BUILD-INFO.txt"
           done
 
           (cd releases && sha256sum *.ipk *.apk 2>/dev/null > sha256sums.txt || true)
           ls -lh releases
 
-      - name: Publish release
+      - name: Create / Update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare.outputs.tag_name }}
           body_path: release-notes/release-notes.md
           files: releases/*
+          # 可选：自动创建不存在的tag（手动触发时仓库无对应tag会自动新建）
+          generate_release_notes: false
