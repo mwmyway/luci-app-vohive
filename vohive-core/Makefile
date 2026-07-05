@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=vohive-core
-VOHIVE_VERSION?=v1.5.4
+VOHIVE_VERSION?=v1.5.5
 PKG_VERSION:=$(patsubst v%,%,$(VOHIVE_VERSION))
 PKG_RELEASE:=1
 PKG_LICENSE:=Proprietary
