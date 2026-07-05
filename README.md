@@ -1,3 +1,7 @@
+# Fork自Demogorgon314/luci-app-vohive：https://github.com/Demogorgon314/luci-app-vohive
+
+# 搬运了yer2018/luci-app-vohive的部分代码：https://github.com/yer2018/luci-app-vohive
+
 # luci-app-vohive
 
 VoHive 的 OpenWrt / ImmortalWrt LuCI 管理插件。
@@ -42,18 +46,26 @@ https://github.com/iniwex5/vohive-release
 从 GitHub Release 下载并安装：
 
 ```sh
-opkg install luci-app-vohive_<version>-r1_all.ipk
+opkg install luci-app-vohive-0.1.18-r1_all.ipk
 ```
 
 如果需要内置核心：
 
 ```sh
-opkg install luci-app-vohive_<version>-r1_all.ipk vohive-core-arm64_1.5.4-r1_all.ipk
-opkg install luci-app-vohive_<version>-r1_all.ipk vohive-core-amd64_1.5.4-r1_all.ipk
-opkg install luci-app-vohive_<version>-r1_all.ipk vohive-core-armv7_1.5.4-r1_all.ipk
+opkg install luci-app-vohive-0.1.18-r1_all.ipk vohive-core-arm64_1.5.5-r1_all.ipk
+opkg install luci-app-vohive-0.1.18-r1_all.ipk vohive-core-amd64_1.5.5-r1_all.ipk
+opkg install luci-app-vohive-0.1.18-r1_all.ipk vohive-core-armv7_1.5.5-r1_all.ipk
 ```
 
-也可以只安装 `luci-app-vohive`，进入 LuCI 页面后点击“安装/更新核心”。
+apk安装命令如下（上传至/tmp目录）：
+
+```sh
+apk add --allow-untrusted /tmp/luci-app-vohive-0.1.18-r1.apk /tmp/vohive-core-arm64-1.5.5-r1.apk
+apk add --allow-untrusted /tmp/luci-app-vohive-0.1.18-r1.apk /tmp/vohive-core-amd64-1.5.5-r1.apk
+apk add --allow-untrusted /tmp/luci-app-vohive-0.1.18-r1.apk /tmp/vohive-core-armv7-1.5.5-r1.apk
+```
+
+也可以只安装 `luci-app-vohive`，进入 LuCI 页面后点击“安装/更新核心”。(目录大佬已删库，建议直接内置核心）
 
 架构对应关系：
 
@@ -68,17 +80,17 @@ armv7l / armv7  -> armv7
 推送 `v*` tag 会触发 GitHub Action，用 OpenWrt SDK 标准打包流程生成 `.ipk` 与 `.apk`：
 
 ```sh
-git tag v0.1.2
-git push origin v0.1.2
+git tag v0.1.18
+git push origin v0.1.18
 ```
 
 Release 产物：
 
 ```text
 luci-app-vohive_<version>-r1_all.ipk
-vohive-core-arm64_1.5.4-r1_all.ipk
-vohive-core-amd64_1.5.4-r1_all.ipk
-vohive-core-armv7_1.5.4-r1_all.ipk
+vohive-core-arm64_1.5.5-r1_all.ipk
+vohive-core-amd64_1.5.5-r1_all.ipk
+vohive-core-armv7_1.5.5-r1_all.ipk
 对应的 OpenWrt 25 apk 包
 sha256sums.txt
 ```
@@ -88,8 +100,8 @@ sha256sums.txt
 把本仓库作为 OpenWrt SDK 的 package feed 使用，或复制到 SDK 的 `package/` 目录后执行：
 
 ```sh
-make package/vohive/luci-app-vohive/compile V=s PKG_VERSION=0.1.2
-make package/vohive/vohive-core/compile V=s VOHIVE_VERSION=v1.5.4
+make package/vohive/luci-app-vohive/compile V=s PKG_VERSION=0.1.18
+make package/vohive/vohive-core/compile V=s VOHIVE_VERSION=v1.5.5
 ```
 
 ## TODO
